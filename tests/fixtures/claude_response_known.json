@@ -1,0 +1,26 @@
+{
+  "vendor_name": "Telenor Norge AS",
+  "vendor_org_number": "988312495",
+  "invoice_number": "INV-2025-00123",
+  "invoice_date": "2025-01-15",
+  "due_date": "2025-02-15",
+  "total_amount": 599.0,
+  "vat_amount": 119.8,
+  "vat_rate": 25.0,
+  "currency": "NOK",
+  "payment_reference": "1234567890123",
+  "description": "Mobilabonnement bedrift",
+  "confidence": 0.95,
+  "suggested_account": "6900",
+  "suggested_vat_code": "1",
+  "line_items": [
+    {
+      "description": "Mobilabonnement Smart Bedrift",
+      "quantity": 1.0,
+      "unit_price": 479.2,
+      "amount": 479.2,
+      "vat_rate": 25.0,
+      "vat_amount": 119.8
+    }
+  ]
+}

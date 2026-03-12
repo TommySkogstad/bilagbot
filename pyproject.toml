@@ -1,0 +1,36 @@
+[project]
+name = "bilagbot"
+version = "0.1.0"
+description = "AI-drevet bilagsscanner: leser fakturaer (PDF/bilde), ekstraherer data med Claude API"
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = [
+    "anthropic>=0.52",
+    "pydantic>=2.0",
+    "click>=8.0",
+    "rich>=13.0",
+    "python-dotenv>=1.0",
+]
+
+[project.scripts]
+bilag = "bilagbot.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.11"]
+
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

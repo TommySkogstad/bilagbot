@@ -1,0 +1,26 @@
+{
+  "vendor_name": "Kafé Solberg",
+  "vendor_org_number": null,
+  "invoice_number": null,
+  "invoice_date": "2025-03-10",
+  "due_date": null,
+  "total_amount": 189.0,
+  "vat_amount": 25.2,
+  "vat_rate": 15.0,
+  "currency": "NOK",
+  "payment_reference": null,
+  "description": "Lunsj",
+  "confidence": 0.7,
+  "suggested_account": "7140",
+  "suggested_vat_code": "11",
+  "line_items": [
+    {
+      "description": "Dagens lunsj",
+      "quantity": 1.0,
+      "unit_price": 163.8,
+      "amount": 163.8,
+      "vat_rate": 15.0,
+      "vat_amount": 25.2
+    }
+  ]
+}
