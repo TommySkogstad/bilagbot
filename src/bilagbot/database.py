@@ -50,6 +50,12 @@ CREATE TABLE IF NOT EXISTS fiken_accounts (
 );
 """
 
+MIGRATIONS = [
+    # Sprint 2: Fiken-felter i scan_log
+    "ALTER TABLE scan_log ADD COLUMN fiken_purchase_id INTEGER",
+    "ALTER TABLE scan_log ADD COLUMN fiken_posted_at TEXT",
+]
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).astimezone().isoformat()
@@ -63,7 +69,18 @@ def get_connection(db_path: Path | None = None) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    _run_migrations(conn)
     return conn
+
+
+def _run_migrations(conn: sqlite3.Connection) -> None:
+    """Kjør migrasjoner som legger til nye kolonner (ignorerer duplikater)."""
+    for sql in MIGRATIONS:
+        try:
+            conn.execute(sql)
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # Kolonne finnes allerede
 
 
 def insert_scan(conn: sqlite3.Connection, *, file_path: str, file_hash: str, supplier_org_number: str | None,
@@ -196,3 +213,41 @@ def update_supplier_fields(conn: sqlite3.Connection, org_number: str, *,
     params.append(org_number)
     conn.execute(f"UPDATE known_suppliers SET {', '.join(updates)} WHERE org_number = ?", params)
     conn.commit()
+
+
+# --- Fiken-operasjoner ---
+
+def update_scan_fiken(conn: sqlite3.Connection, scan_id: int, purchase_id: int) -> None:
+    """Lagre Fiken purchase ID og marker som POSTED."""
+    now = _now()
+    conn.execute(
+        "UPDATE scan_log SET status = 'POSTED', fiken_purchase_id = ?, fiken_posted_at = ?, posted_at = ? WHERE id = ?",
+        (purchase_id, now, now, scan_id),
+    )
+    conn.commit()
+
+
+def sync_fiken_accounts(conn: sqlite3.Connection, accounts: list[dict]) -> int:
+    """Synkroniser kontoplan fra Fiken til lokal cache. Returnerer antall kontoer."""
+    now = _now()
+    conn.execute("DELETE FROM fiken_accounts")
+    for account in accounts:
+        code = str(account.get("code", ""))
+        name = account.get("name", "")
+        if code and name:
+            conn.execute(
+                "INSERT OR REPLACE INTO fiken_accounts (code, name, last_synced_at) VALUES (?, ?, ?)",
+                (code, name, now),
+            )
+    conn.commit()
+    return conn.execute("SELECT COUNT(*) FROM fiken_accounts").fetchone()[0]
+
+
+def get_fiken_accounts(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Hent cached Fiken-kontoplan."""
+    return conn.execute("SELECT code, name FROM fiken_accounts ORDER BY code").fetchall()
+
+
+def get_fiken_account(conn: sqlite3.Connection, code: str) -> sqlite3.Row | None:
+    """Sjekk om en kontokode finnes i cached Fiken-kontoplan."""
+    return conn.execute("SELECT code, name FROM fiken_accounts WHERE code = ?", (code,)).fetchone()

@@ -8,14 +8,18 @@ from bilagbot.classifier import ClassificationResult, classify, learn_from_appro
 from bilagbot.database import (
     find_duplicate,
     get_connection,
+    get_fiken_accounts,
     get_scan,
+    get_scans_by_status,
     get_supplier,
     insert_scan,
+    sync_fiken_accounts,
     update_scan_classification,
+    update_scan_fiken,
     update_scan_status,
     update_supplier_fields,
 )
-from bilagbot.exceptions import ScannerError
+from bilagbot.exceptions import FikenError, ScannerError
 from bilagbot.models import InvoiceData, MatchLevel
 from bilagbot.review import console, show_pending_list, show_scan_detail, show_status_summary, show_suppliers
 from bilagbot.scanner import file_hash, scan_file
@@ -235,3 +239,181 @@ def suppliers_edit(org_number: str, account: str | None, vat: str | None, auto: 
     console.print(f"  MVA: {supplier['vat_code'] or '—'}")
     console.print(f"  Auto: {'Ja' if supplier['auto_approve'] else 'Nei'}")
     conn.close()
+
+
+# --- Fiken-kommandoer ---
+
+@main.group()
+def fiken():
+    """Fiken API-integrasjon."""
+
+
+@fiken.command("validate")
+def fiken_validate():
+    """Test Fiken API-forbindelse."""
+    from bilagbot.config import FIKEN_API_TOKEN, FIKEN_COMPANY_SLUG
+
+    if not FIKEN_API_TOKEN or not FIKEN_COMPANY_SLUG:
+        console.print("[red]FIKEN_API_TOKEN og FIKEN_COMPANY_SLUG må settes i .env[/red]")
+        return
+
+    from bilagbot.fiken import FikenClient
+
+    try:
+        client = FikenClient()
+        company = client.validate()
+        console.print("[green]✓ Koblet til Fiken[/green]")
+        console.print(f"  Firma: {company.get('name', '?')}")
+        console.print(f"  Org.nr: {company.get('organizationNumber', '?')}")
+        console.print(f"  API-tilgang: {'Ja' if company.get('hasApiAccess') else '[red]Nei[/red]'}")
+        client.close()
+    except FikenError as e:
+        console.print(f"[red]✗ Feil: {e}[/red]")
+
+
+@fiken.command("sync-accounts")
+def fiken_sync_accounts():
+    """Synkroniser kontoplan fra Fiken."""
+    from bilagbot.fiken import FikenClient
+
+    try:
+        client = FikenClient()
+        accounts = client.get_accounts()
+        conn = get_connection()
+        count = sync_fiken_accounts(conn, accounts)
+        console.print(f"[green]✓ Synkronisert {count} kontoer fra Fiken[/green]")
+        conn.close()
+        client.close()
+    except FikenError as e:
+        console.print(f"[red]✗ Feil: {e}[/red]")
+
+
+@fiken.command("accounts")
+def fiken_accounts_list():
+    """Vis cached kontoplan fra Fiken."""
+    conn = get_connection()
+    accounts = get_fiken_accounts(conn)
+    if not accounts:
+        console.print("[yellow]Ingen kontoer i cache. Kjør 'bilag fiken sync-accounts' først.[/yellow]")
+    else:
+        from rich.table import Table
+
+        table = Table(title=f"Fiken-kontoplan ({len(accounts)} kontoer)")
+        table.add_column("Kode", style="bold")
+        table.add_column("Navn")
+        for acc in accounts:
+            table.add_row(acc["code"], acc["name"])
+        console.print(table)
+    conn.close()
+
+
+@fiken.command("post")
+@click.argument("scan_id", type=int)
+def fiken_post(scan_id: int):
+    """Bokfør et godkjent bilag til Fiken."""
+    conn = get_connection()
+    row = get_scan(conn, scan_id)
+    if not row:
+        console.print(f"[red]Bilag #{scan_id} finnes ikke[/red]")
+        conn.close()
+        return
+
+    if row["status"] != "APPROVED":
+        console.print(f"[yellow]Bilag #{scan_id} har status {row['status']} — kun APPROVED kan bokføres[/yellow]")
+        conn.close()
+        return
+
+    if not row["account_code"]:
+        console.print(f"[red]Bilag #{scan_id} mangler kontokode — bruk 'bilag approve {scan_id} -a <konto>'[/red]")
+        conn.close()
+        return
+
+    from bilagbot.fiken import FikenClient
+
+    try:
+        client = FikenClient()
+        file_path = Path(row["file_path"]) if row["file_path"] else None
+
+        purchase_id = client.post_invoice(
+            vendor_name=row["supplier_name"] or "Ukjent leverandør",
+            vendor_org_number=row["supplier_org_number"],
+            invoice_date=row["invoice_date"] or "1970-01-01",
+            due_date=row["due_date"],
+            invoice_number=row["invoice_number"],
+            payment_reference=None,
+            total_amount=row["total_amount"] or 0,
+            account_code=row["account_code"],
+            vat_code=row["vat_code"],
+            description=row["supplier_name"] or "Kjøp",
+            file_path=file_path,
+        )
+
+        update_scan_fiken(conn, scan_id, purchase_id)
+        console.print(f"[green]✓ Bilag #{scan_id} bokført til Fiken (kjøp #{purchase_id})[/green]")
+        client.close()
+    except FikenError as e:
+        update_scan_status(conn, scan_id, "FAILED")
+        console.print(f"[red]✗ Fiken-feil: {e}[/red]")
+    finally:
+        conn.close()
+
+
+@fiken.command("post-pending")
+def fiken_post_pending():
+    """Bokfør alle godkjente bilag til Fiken."""
+    conn = get_connection()
+    approved = get_scans_by_status(conn, "APPROVED")
+
+    if not approved:
+        console.print("[yellow]Ingen godkjente bilag å bokføre.[/yellow]")
+        conn.close()
+        return
+
+    postable = [r for r in approved if r["account_code"]]
+    skipped = len(approved) - len(postable)
+
+    if skipped:
+        console.print(f"[yellow]Hopper over {skipped} bilag uten kontokode[/yellow]")
+
+    if not postable:
+        console.print("[yellow]Ingen bilag med kontokode å bokføre.[/yellow]")
+        conn.close()
+        return
+
+    from bilagbot.fiken import FikenClient
+
+    try:
+        client = FikenClient()
+        success = 0
+        failed = 0
+
+        for row in postable:
+            try:
+                file_path = Path(row["file_path"]) if row["file_path"] else None
+                purchase_id = client.post_invoice(
+                    vendor_name=row["supplier_name"] or "Ukjent leverandør",
+                    vendor_org_number=row["supplier_org_number"],
+                    invoice_date=row["invoice_date"] or "1970-01-01",
+                    due_date=row["due_date"],
+                    invoice_number=row["invoice_number"],
+                    payment_reference=None,
+                    total_amount=row["total_amount"] or 0,
+                    account_code=row["account_code"],
+                    vat_code=row["vat_code"],
+                    description=row["supplier_name"] or "Kjøp",
+                    file_path=file_path,
+                )
+                update_scan_fiken(conn, row["id"], purchase_id)
+                console.print(f"  [green]✓[/green] #{row['id']} → kjøp #{purchase_id}")
+                success += 1
+            except FikenError as e:
+                update_scan_status(conn, row["id"], "FAILED")
+                console.print(f"  [red]✗[/red] #{row['id']}: {e}")
+                failed += 1
+
+        console.print(f"\n[bold]Resultat: {success} bokført, {failed} feilet[/bold]")
+        client.close()
+    except FikenError as e:
+        console.print(f"[red]✗ Fiken-feil: {e}[/red]")
+    finally:
+        conn.close()

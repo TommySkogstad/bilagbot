@@ -16,6 +16,12 @@ CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-5-20250514")
 
 AUTO_APPROVE_THRESHOLD = int(os.getenv("AUTO_APPROVE_THRESHOLD", "3"))
 
+# Fiken API
+FIKEN_API_TOKEN = os.getenv("FIKEN_API_TOKEN", "")
+FIKEN_COMPANY_SLUG = os.getenv("FIKEN_COMPANY_SLUG", "")
+FIKEN_BASE_URL = "https://api.fiken.no/api/v2"
+FIKEN_ENABLED = bool(FIKEN_API_TOKEN and FIKEN_COMPANY_SLUG)
+
 
 def ensure_data_dir() -> Path:
     """Opprett data-katalog hvis den ikke finnes."""
