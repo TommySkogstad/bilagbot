@@ -73,7 +73,7 @@ docker compose logs -f backend  # Se backend-logger
 
 ## Konvensjoner
 
-- Kjor tester: `uv run pytest tests/ -v`
+- Kjor tester: `uv run pytest tests/ -v` (112 tester)
 - Linter: `uv run ruff check src/ tests/`
 - Alle feilmeldinger og CLI-output pa norsk
 - Commit-meldinger pa engelsk
