@@ -72,12 +72,13 @@ def scan_file(path: Path, *, model: str | None = None) -> tuple[InvoiceData, str
     if mime not in SUPPORTED_TYPES:
         raise ScannerError(f"Filtypen {mime} stottes ikke. Stottede typer: PDF, JPEG, PNG, GIF, WebP")
 
-    prompt = f"{SCAN_PROMPT}\n\nFil: {path.resolve()}"
+    prompt = f"Les filen {path.resolve()} og analyser den.\n\n{SCAN_PROMPT}"
 
     cmd = [
         "claude", "-p", prompt,
         "--output-format", "json",
-        "--max-turns", "1",
+        "--max-turns", "2",
+        "--allowedTools", "Read",
     ]
     if model or CLAUDE_MODEL:
         cmd.extend(["--model", model or CLAUDE_MODEL])
