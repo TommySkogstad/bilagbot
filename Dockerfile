@@ -14,11 +14,10 @@ WORKDIR /app
 # Install uv for fast Python package management
 RUN pip install --no-cache-dir uv
 
-# Copy project files
+# Copy project files and install dependencies
 COPY pyproject.toml uv.lock ./
-RUN uv sync --no-dev --frozen
-
 COPY src/ src/
+RUN uv sync --no-dev --frozen
 
 # Data directory
 RUN mkdir -p /data/uploads
