@@ -32,17 +32,18 @@ class TestScanCommand:
         assert "Ingen støttede filer" in result.output
 
     def test_scan_success(self, runner, sample_pdf, known_response, tmp_path):
-        """Test full scan-flyt med mocket API og in-memory DB."""
+        """Test full scan-flyt med mocket CLI og in-memory DB."""
         db_path = tmp_path / "test.db"
 
-        mock_text = MagicMock()
-        mock_text.text = json.dumps(known_response)
-        mock_response = MagicMock()
-        mock_response.content = [mock_text]
+        cli_output = json.dumps({"result": json.dumps(known_response)})
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = cli_output
+        mock_result.stderr = ""
 
-        with patch("bilagbot.scanner.anthropic.Anthropic") as MockClient, \
+        with patch("bilagbot.scanner.shutil.which", return_value="/usr/bin/claude"), \
+             patch("bilagbot.scanner.subprocess.run", return_value=mock_result), \
              patch("bilagbot.cli.get_connection", return_value=get_connection(db_path=db_path)):
-            MockClient.return_value.messages.create.return_value = mock_response
             result = runner.invoke(main, ["scan", str(sample_pdf)])
 
         assert result.exit_code == 0
@@ -53,14 +54,15 @@ class TestScanCommand:
         """Test at duplikater oppdages."""
         db_path = tmp_path / "test.db"
 
-        mock_text = MagicMock()
-        mock_text.text = json.dumps(known_response)
-        mock_response = MagicMock()
-        mock_response.content = [mock_text]
+        cli_output = json.dumps({"result": json.dumps(known_response)})
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = cli_output
+        mock_result.stderr = ""
 
-        with patch("bilagbot.scanner.anthropic.Anthropic") as MockClient, \
+        with patch("bilagbot.scanner.shutil.which", return_value="/usr/bin/claude"), \
+             patch("bilagbot.scanner.subprocess.run", return_value=mock_result), \
              patch("bilagbot.cli.get_connection", side_effect=lambda: get_connection(db_path=db_path)):
-            MockClient.return_value.messages.create.return_value = mock_response
             runner.invoke(main, ["scan", str(sample_pdf)])
             result = runner.invoke(main, ["scan", str(sample_pdf)])
 

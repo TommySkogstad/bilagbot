@@ -1,16 +1,18 @@
 [project]
 name = "bilagbot"
 version = "0.1.0"
-description = "AI-drevet bilagsscanner: leser fakturaer (PDF/bilde), ekstraherer data med Claude API"
+description = "AI-drevet bilagsscanner: leser fakturaer (PDF/bilde), ekstraherer data med Claude CLI"
 requires-python = ">=3.11"
 license = "MIT"
 dependencies = [
-    "anthropic>=0.52",
     "pydantic>=2.0",
     "click>=8.0",
     "rich>=13.0",
     "python-dotenv>=1.0",
     "httpx>=0.27",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "python-multipart>=0.0.20",
 ]
 
 [project.scripts]

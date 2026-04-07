@@ -1,13 +1,13 @@
-"""Scanner: bruker Claude API til å ekstrahere data fra fakturaer."""
+"""Scanner: bruker Claude CLI til a ekstrahere data fra fakturaer."""
 
-import base64
 import hashlib
+import json
 import mimetypes
+import shutil
+import subprocess
 from pathlib import Path
 
-import anthropic
-
-from bilagbot.config import ANTHROPIC_API_KEY, CLAUDE_MODEL
+from bilagbot.config import CLAUDE_MODEL
 from bilagbot.exceptions import ScannerError
 from bilagbot.models import InvoiceData
 
@@ -17,23 +17,23 @@ SUPPORTED_TYPES = SUPPORTED_IMAGE_TYPES | {"application/pdf"}
 SCAN_PROMPT = """Analyser dette dokumentet (faktura/kvittering). Ekstraher all informasjon du finner.
 
 Regler:
-- vendor_name: Navn på leverandør/butikk
+- vendor_name: Navn pa leverandor/butikk
 - vendor_org_number: Organisasjonsnummer (kun siffer, 9 siffer for norske selskaper)
 - invoice_number: Fakturanummer
 - invoice_date: Fakturadato i format YYYY-MM-DD
 - due_date: Forfallsdato i format YYYY-MM-DD
-- total_amount: Totalbeløp inkl. mva som tall
-- vat_amount: Totalt MVA-beløp som tall
+- total_amount: Totalbelop inkl. mva som tall
+- vat_amount: Totalt MVA-belop som tall
 - vat_rate: MVA-sats i prosent (f.eks. 25.0)
 - currency: Valutakode (default "NOK")
 - payment_reference: KID-nummer eller betalingsreferanse
 - description: Kort beskrivelse av hva fakturaen gjelder
-- confidence: Tall mellom 0 og 1 for hvor sikker du er på dataene totalt sett
-- suggested_account: Foreslått regnskapskonto (f.eks. "6300" for kontor, "6800" for data/IT)
-- suggested_vat_code: Foreslått MVA-kode ("1" for 25%, "11" for 15% mat, "6" for 0%)
+- confidence: Tall mellom 0 og 1 for hvor sikker du er pa dataene totalt sett
+- suggested_account: Foreslatt regnskapskonto (f.eks. "6300" for kontor, "6800" for data/IT)
+- suggested_vat_code: Foreslatt MVA-kode ("1" for 25%, "11" for 15% mat, "6" for 0%)
 - line_items: Liste over enkeltposter med description, quantity, unit_price, amount, vat_rate, vat_amount
 
-Returner null for felt du ikke finner."""
+Returner BARE gyldig JSON med disse feltene. Bruk null for felt du ikke finner."""
 
 
 def file_hash(path: Path) -> str:
@@ -56,59 +56,85 @@ def detect_mime_type(path: Path) -> str:
     return mime
 
 
-def scan_file(path: Path, *, api_key: str | None = None, model: str | None = None) -> tuple[InvoiceData, str]:
-    """Scan en fil med Claude API og returner (InvoiceData, raw_json).
+def scan_file(path: Path, *, model: str | None = None) -> tuple[InvoiceData, str]:
+    """Scan en fil med Claude CLI og returner (InvoiceData, raw_json).
 
     Raises:
-        ScannerError: Hvis filen ikke støttes eller API-kallet feiler.
+        ScannerError: Hvis filen ikke stottes eller CLI-kallet feiler.
     """
-    key = api_key if api_key is not None else ANTHROPIC_API_KEY
-    if not key:
-        raise ScannerError("ANTHROPIC_API_KEY er ikke konfigurert. Sett den i .env eller som miljøvariabel.")
+    if not shutil.which("claude"):
+        raise ScannerError("Claude CLI er ikke installert. Installer med: npm install -g @anthropic-ai/claude-code")
 
     if not path.exists():
         raise ScannerError(f"Filen finnes ikke: {path}")
 
     mime = detect_mime_type(path)
     if mime not in SUPPORTED_TYPES:
-        raise ScannerError(f"Filtypen {mime} støttes ikke. Støttede typer: PDF, JPEG, PNG, GIF, WebP")
+        raise ScannerError(f"Filtypen {mime} stottes ikke. Stottede typer: PDF, JPEG, PNG, GIF, WebP")
 
-    file_bytes = path.read_bytes()
-    b64 = base64.standard_b64encode(file_bytes).decode("ascii")
+    prompt = f"{SCAN_PROMPT}\n\nFil: {path.resolve()}"
 
-    if mime == "application/pdf":
-        content_block = {
-            "type": "document",
-            "source": {"type": "base64", "media_type": "application/pdf", "data": b64},
-        }
-    else:
-        content_block = {
-            "type": "image",
-            "source": {"type": "base64", "media_type": mime, "data": b64},
-        }
-
-    client = anthropic.Anthropic(api_key=key)
+    cmd = [
+        "claude", "-p", prompt,
+        "--output-format", "json",
+        "--max-turns", "1",
+    ]
+    if model or CLAUDE_MODEL:
+        cmd.extend(["--model", model or CLAUDE_MODEL])
 
     try:
-        response = client.messages.create(
-            model=model or CLAUDE_MODEL,
-            max_tokens=2048,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [content_block, {"type": "text", "text": SCAN_PROMPT}],
-                }
-            ],
-            output_config={
-                "format": {
-                    "type": "json_schema",
-                    "schema": InvoiceData.model_json_schema(),
-                },
-            },
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=120,
         )
-    except anthropic.APIError as e:
-        raise ScannerError(f"Claude API-feil: {e}") from e
+    except subprocess.TimeoutExpired:
+        raise ScannerError("Claude CLI tidsavbrudd (120s)")
+    except OSError as e:
+        raise ScannerError(f"Kunne ikke kjore Claude CLI: {e}")
 
-    raw_json = response.content[0].text
-    invoice = InvoiceData.model_validate_json(raw_json)
+    if result.returncode != 0:
+        stderr = result.stderr.strip()
+        raise ScannerError(f"Claude CLI feilet (kode {result.returncode}): {stderr}")
+
+    # Claude CLI med --output-format json returnerer et JSON-objekt med "result" felt
+    try:
+        cli_output = json.loads(result.stdout)
+        raw_text = cli_output.get("result", result.stdout)
+    except json.JSONDecodeError:
+        raw_text = result.stdout.strip()
+
+    # Ekstraher JSON fra responsen (Claude kan wrappe i markdown code blocks)
+    raw_json = _extract_json(raw_text)
+
+    try:
+        invoice = InvoiceData.model_validate_json(raw_json)
+    except Exception as e:
+        raise ScannerError(f"Kunne ikke parse Claude-respons som InvoiceData: {e}")
+
     return invoice, raw_json
+
+
+def _extract_json(text: str) -> str:
+    """Ekstraher JSON fra tekst, selv om den er wrappet i markdown code blocks."""
+    text = text.strip()
+
+    # Fjern markdown code block hvis til stede
+    if text.startswith("```"):
+        lines = text.split("\n")
+        # Fjern forste linje (```json) og siste linje (```)
+        start = 1
+        end = len(lines)
+        for i in range(len(lines) - 1, 0, -1):
+            if lines[i].strip() == "```":
+                end = i
+                break
+        text = "\n".join(lines[start:end]).strip()
+
+    # Valider at det er gyldig JSON
+    try:
+        json.loads(text)
+        return text
+    except json.JSONDecodeError as e:
+        raise ScannerError(f"Ugyldig JSON i Claude-respons: {e}")

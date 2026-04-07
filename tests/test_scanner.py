@@ -1,4 +1,4 @@
-"""Tester for scanner (med mocket Claude API)."""
+"""Tester for scanner (med mocket Claude CLI)."""
 
 import json
 from unittest.mock import MagicMock, patch
@@ -39,44 +39,87 @@ class TestDetectMimeType:
 
 
 class TestScanFile:
-    def test_missing_api_key(self, sample_pdf, monkeypatch):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "")
-        with pytest.raises(ScannerError, match="ANTHROPIC_API_KEY"):
-            scan_file(sample_pdf, api_key="")
+    def test_missing_cli(self, sample_pdf):
+        with patch("bilagbot.scanner.shutil.which", return_value=None):
+            with pytest.raises(ScannerError, match="Claude CLI er ikke installert"):
+                scan_file(sample_pdf)
 
     def test_nonexistent_file(self, tmp_path):
-        with pytest.raises(ScannerError, match="finnes ikke"):
-            scan_file(tmp_path / "ghost.pdf", api_key="test-key")
+        with patch("bilagbot.scanner.shutil.which", return_value="/usr/bin/claude"):
+            with pytest.raises(ScannerError, match="finnes ikke"):
+                scan_file(tmp_path / "ghost.pdf")
 
     def test_unsupported_type(self, tmp_path):
         f = tmp_path / "test.docx"
         f.write_bytes(b"dummy")
-        with pytest.raises(ScannerError, match="støttes ikke"):
-            scan_file(f, api_key="test-key")
+        with patch("bilagbot.scanner.shutil.which", return_value="/usr/bin/claude"):
+            with pytest.raises(ScannerError, match="stottes ikke"):
+                scan_file(f)
 
     def test_successful_scan(self, sample_pdf, known_response):
-        """Test scan med mocket Claude API."""
-        mock_text = MagicMock()
-        mock_text.text = json.dumps(known_response)
-        mock_response = MagicMock()
-        mock_response.content = [mock_text]
+        """Test scan med mocket Claude CLI."""
+        cli_output = json.dumps({"result": json.dumps(known_response)})
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = cli_output
+        mock_result.stderr = ""
 
-        with patch("bilagbot.scanner.anthropic.Anthropic") as MockClient:
-            MockClient.return_value.messages.create.return_value = mock_response
-            invoice, raw_json = scan_file(sample_pdf, api_key="test-key")
+        with patch("bilagbot.scanner.shutil.which", return_value="/usr/bin/claude"), \
+             patch("bilagbot.scanner.subprocess.run", return_value=mock_result):
+            invoice, raw_json = scan_file(sample_pdf)
 
         assert isinstance(invoice, InvoiceData)
         assert invoice.vendor_name == "Telenor Norge AS"
         assert invoice.total_amount == 599.0
         assert json.loads(raw_json)["vendor_org_number"] == "988312495"
 
-    def test_api_error(self, sample_pdf):
-        """Test at API-feil wrapes som ScannerError."""
-        import anthropic
+    def test_successful_scan_raw_json(self, sample_pdf, known_response):
+        """Test scan der CLI returnerer ren JSON (uten result-wrapper)."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps(known_response)
+        mock_result.stderr = ""
 
-        with patch("bilagbot.scanner.anthropic.Anthropic") as MockClient:
-            MockClient.return_value.messages.create.side_effect = anthropic.APIError(
-                message="Rate limited", request=MagicMock(), body=None
-            )
-            with pytest.raises(ScannerError, match="Claude API-feil"):
-                scan_file(sample_pdf, api_key="test-key")
+        with patch("bilagbot.scanner.shutil.which", return_value="/usr/bin/claude"), \
+             patch("bilagbot.scanner.subprocess.run", return_value=mock_result):
+            invoice, raw_json = scan_file(sample_pdf)
+
+        assert isinstance(invoice, InvoiceData)
+        assert invoice.vendor_name == "Telenor Norge AS"
+
+    def test_successful_scan_markdown_wrapped(self, sample_pdf, known_response):
+        """Test scan der CLI returnerer JSON wrappet i markdown code block."""
+        wrapped = f"```json\n{json.dumps(known_response)}\n```"
+        cli_output = json.dumps({"result": wrapped})
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = cli_output
+        mock_result.stderr = ""
+
+        with patch("bilagbot.scanner.shutil.which", return_value="/usr/bin/claude"), \
+             patch("bilagbot.scanner.subprocess.run", return_value=mock_result):
+            invoice, raw_json = scan_file(sample_pdf)
+
+        assert isinstance(invoice, InvoiceData)
+        assert invoice.vendor_name == "Telenor Norge AS"
+
+    def test_cli_error(self, sample_pdf):
+        """Test at CLI-feil wrapes som ScannerError."""
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stdout = ""
+        mock_result.stderr = "Error: authentication failed"
+
+        with patch("bilagbot.scanner.shutil.which", return_value="/usr/bin/claude"), \
+             patch("bilagbot.scanner.subprocess.run", return_value=mock_result):
+            with pytest.raises(ScannerError, match="Claude CLI feilet"):
+                scan_file(sample_pdf)
+
+    def test_cli_timeout(self, sample_pdf):
+        """Test at timeout wrapes som ScannerError."""
+        import subprocess
+
+        with patch("bilagbot.scanner.shutil.which", return_value="/usr/bin/claude"), \
+             patch("bilagbot.scanner.subprocess.run", side_effect=subprocess.TimeoutExpired("claude", 120)):
+            with pytest.raises(ScannerError, match="tidsavbrudd"):
+                scan_file(sample_pdf)

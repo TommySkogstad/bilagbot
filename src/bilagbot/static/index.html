@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BilagBot — Ingenior Tommy Skogstad</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --navy:   #0d1b2a;
+  --blue1:  #1b2d42;
+  --blue2:  #2e4260;
+  --blue3:  #4a6080;
+  --blue4:  #7a96b0;
+  --blue5:  #b8cad8;
+  --blue6:  #e4eaf0;
+  --white:  #f4f5f2;
+  --green:  #2d6a4f;
+  --red:    #9b2226;
+  --yellow: #b08c00;
+  --font-sans: 'DM Sans', sans-serif;
+  --font-mono: 'DM Mono', monospace;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--white); color:var(--navy); font-family:var(--font-sans); font-size:15px; line-height:1.6; }
+
+/* Header */
+.header { background:var(--navy); padding:16px 32px; display:flex; align-items:center; justify-content:space-between; }
+.header-brand { display:flex; align-items:center; gap:14px; }
+.header-name { font-family:var(--font-sans); font-size:16px; font-weight:400; color:var(--white); letter-spacing:-0.02em; }
+.header-sub { font-family:var(--font-mono); font-size:9px; letter-spacing:0.14em; color:var(--blue3); text-transform:uppercase; }
+.header-nav { display:flex; gap:20px; }
+.header-nav button { background:none; border:none; font-family:var(--font-mono); font-size:10px; letter-spacing:0.1em; color:var(--blue4); cursor:pointer; text-transform:uppercase; padding:4px 0; border-bottom:2px solid transparent; }
+.header-nav button.active { color:var(--white); border-bottom-color:var(--blue4); }
+.header-nav button:hover { color:var(--white); }
+
+/* Layout */
+.page { max-width:960px; margin:0 auto; padding:32px 24px 80px; }
+.section-label { font-family:var(--font-mono); font-size:10px; letter-spacing:0.2em; color:var(--blue3); text-transform:uppercase; margin-bottom:20px; display:flex; align-items:center; gap:12px; }
+.section-label::after { content:''; flex:1; height:1px; background:var(--blue6); }
+
+/* Upload */
+.upload-zone { border:2px dashed var(--blue5); border-radius:6px; padding:48px 32px; text-align:center; cursor:pointer; transition:all 0.2s; margin-bottom:32px; }
+.upload-zone:hover, .upload-zone.dragover { border-color:var(--blue3); background:var(--blue6); }
+.upload-zone.scanning { border-color:var(--blue4); background:var(--blue6); cursor:wait; }
+.upload-icon { font-size:36px; color:var(--blue4); margin-bottom:12px; }
+.upload-text { font-family:var(--font-sans); font-size:14px; color:var(--blue3); }
+.upload-hint { font-family:var(--font-mono); font-size:9px; color:var(--blue4); letter-spacing:0.1em; margin-top:8px; }
+.upload-input { display:none; }
+
+/* Spinner */
+.spinner { display:inline-block; width:24px; height:24px; border:3px solid var(--blue5); border-top-color:var(--navy); border-radius:50%; animation:spin 0.8s linear infinite; margin-bottom:8px; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* Table */
+.scan-table { width:100%; border-collapse:collapse; font-size:13px; }
+.scan-table th { font-family:var(--font-mono); font-size:9px; letter-spacing:0.12em; color:var(--blue3); text-transform:uppercase; text-align:left; padding:8px 12px; border-bottom:1px solid var(--blue6); }
+.scan-table td { padding:10px 12px; border-bottom:1px solid var(--blue6); vertical-align:middle; }
+.scan-table tr:hover { background:var(--blue6); }
+
+/* Status badges */
+.badge { font-family:var(--font-mono); font-size:9px; letter-spacing:0.08em; padding:3px 8px; border-radius:3px; text-transform:uppercase; font-weight:500; }
+.badge-pending { background:#fef3cd; color:var(--yellow); }
+.badge-approved { background:#d4edda; color:var(--green); }
+.badge-rejected { background:#f8d7da; color:var(--red); }
+.badge-posted { background:#d1ecf1; color:var(--blue2); }
+.badge-failed { background:#f8d7da; color:var(--red); }
+.badge-unknown { background:#f8d7da; color:var(--red); }
+.badge-known { background:#fef3cd; color:var(--yellow); }
+.badge-auto { background:#d4edda; color:var(--green); }
+
+/* Buttons */
+.btn { font-family:var(--font-mono); font-size:10px; letter-spacing:0.08em; padding:6px 14px; border:none; border-radius:3px; cursor:pointer; text-transform:uppercase; font-weight:500; transition:opacity 0.15s; }
+.btn:hover { opacity:0.8; }
+.btn:disabled { opacity:0.4; cursor:not-allowed; }
+.btn-approve { background:var(--green); color:var(--white); }
+.btn-reject { background:var(--red); color:var(--white); }
+.btn-fiken { background:var(--navy); color:var(--white); }
+.btn-sm { padding:4px 10px; font-size:9px; }
+.btn-group { display:flex; gap:6px; }
+
+/* Detail panel */
+.detail-panel { background:var(--white); border:1px solid var(--blue6); border-radius:4px; padding:24px; margin-bottom:24px; }
+.detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.detail-field label { font-family:var(--font-mono); font-size:9px; letter-spacing:0.12em; color:var(--blue3); text-transform:uppercase; display:block; margin-bottom:4px; }
+.detail-field .value { font-size:14px; color:var(--navy); }
+.detail-field input, .detail-field select { font-family:var(--font-sans); font-size:14px; padding:6px 10px; border:1px solid var(--blue5); border-radius:3px; width:100%; background:var(--white); color:var(--navy); }
+.detail-field input:focus, .detail-field select:focus { outline:none; border-color:var(--blue3); }
+.detail-amount { font-size:22px; font-weight:400; letter-spacing:-0.02em; }
+.detail-actions { margin-top:20px; padding-top:16px; border-top:1px solid var(--blue6); display:flex; gap:10px; align-items:center; }
+.detail-actions .status-msg { font-family:var(--font-mono); font-size:10px; color:var(--blue3); margin-left:auto; }
+
+/* Toast */
+.toast { position:fixed; bottom:24px; right:24px; padding:12px 20px; border-radius:4px; font-family:var(--font-mono); font-size:11px; color:var(--white); z-index:100; animation:fadeIn 0.3s; }
+.toast-success { background:var(--green); }
+.toast-error { background:var(--red); }
+@keyframes fadeIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+
+/* Stats bar */
+.stats-bar { display:flex; gap:20px; margin-bottom:24px; }
+.stat { font-family:var(--font-mono); font-size:10px; letter-spacing:0.08em; color:var(--blue3); text-transform:uppercase; }
+.stat strong { font-family:var(--font-sans); font-size:18px; color:var(--navy); display:block; margin-bottom:2px; letter-spacing:normal; text-transform:none; }
+
+/* Empty state */
+.empty { text-align:center; padding:48px; color:var(--blue4); }
+.empty-text { font-size:14px; margin-bottom:4px; }
+.empty-hint { font-family:var(--font-mono); font-size:9px; letter-spacing:0.1em; }
+
+/* Responsive */
+@media (max-width:640px) {
+  .page { padding:16px 12px 60px; }
+  .detail-grid { grid-template-columns:1fr; }
+  .header { padding:12px 16px; flex-direction:column; gap:10px; }
+  .stats-bar { flex-wrap:wrap; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-brand">
+    <div>
+      <div class="header-name">BilagBot</div>
+      <div class="header-sub">Ingenior Tommy Skogstad</div>
+    </div>
+  </div>
+  <div class="header-nav">
+    <button class="active" onclick="showView('upload')" id="nav-upload">Last opp</button>
+    <button onclick="showView('pending')" id="nav-pending">Ventende</button>
+    <button onclick="showView('all')" id="nav-all">Alle bilag</button>
+  </div>
+</div>
+
+<div class="page">
+  <!-- Upload view -->
+  <div id="view-upload">
+    <div class="section-label">Last opp bilag</div>
+    <div class="upload-zone" id="dropzone">
+      <div class="upload-icon" id="upload-icon">&#8593;</div>
+      <div class="upload-text" id="upload-text">Dra og slipp faktura her, eller klikk for a velge fil</div>
+      <div class="upload-hint">PDF, JPEG, PNG, GIF, WebP</div>
+      <input type="file" class="upload-input" id="file-input" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp">
+    </div>
+    <div id="scan-result"></div>
+  </div>
+
+  <!-- Pending view -->
+  <div id="view-pending" style="display:none;">
+    <div class="section-label">Ventende bilag</div>
+    <div id="pending-list"></div>
+  </div>
+
+  <!-- All view -->
+  <div id="view-all" style="display:none;">
+    <div class="section-label">Alle bilag</div>
+    <div id="stats-bar" class="stats-bar"></div>
+    <div id="all-list"></div>
+  </div>
+</div>
+
+<script>
+const API = '/api';
+
+// Navigation
+function showView(view) {
+  document.querySelectorAll('[id^="view-"]').forEach(el => el.style.display = 'none');
+  document.querySelectorAll('.header-nav button').forEach(btn => btn.classList.remove('active'));
+  document.getElementById('view-' + view).style.display = 'block';
+  document.getElementById('nav-' + view).classList.add('active');
+  if (view === 'pending') loadPending();
+  if (view === 'all') loadAll();
+}
+
+// Toast
+function toast(msg, type = 'success') {
+  const el = document.createElement('div');
+  el.className = 'toast toast-' + type;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+// Format amount
+function fmt(amount) {
+  if (amount == null) return '\u2014';
+  return amount.toLocaleString('nb-NO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Upload / Drag & Drop
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('file-input');
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) uploadFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files.length) uploadFile(fileInput.files[0]);
+});
+
+async function uploadFile(file) {
+  const icon = document.getElementById('upload-icon');
+  const text = document.getElementById('upload-text');
+  dropzone.classList.add('scanning');
+  icon.innerHTML = '<div class="spinner"></div>';
+  text.textContent = 'Skanner ' + file.name + ' med Claude...';
+
+  const form = new FormData();
+  form.append('file', file);
+
+  try {
+    const res = await fetch(API + '/scan', { method: 'POST', body: form });
+    const data = await res.json();
+
+    if (!res.ok) {
+      toast(data.detail || 'Feil ved skanning', 'error');
+      resetUpload();
+      return;
+    }
+
+    if (data.duplicate) {
+      toast('Allerede skannet (bilag #' + data.existing_id + ')', 'error');
+      resetUpload();
+      return;
+    }
+
+    toast('Bilag #' + data.scan.id + ' skannet');
+    showScanDetail(data.scan);
+  } catch (err) {
+    toast('Nettverksfeil: ' + err.message, 'error');
+  }
+  resetUpload();
+}
+
+function resetUpload() {
+  dropzone.classList.remove('scanning');
+  document.getElementById('upload-icon').innerHTML = '&#8593;';
+  document.getElementById('upload-text').textContent = 'Dra og slipp faktura her, eller klikk for a velge fil';
+  fileInput.value = '';
+}
+
+// Show scan detail (after upload or click)
+function showScanDetail(scan) {
+  const container = document.getElementById('scan-result');
+  const isPending = scan.status === 'PENDING';
+  const isApproved = scan.status === 'APPROVED';
+
+  container.innerHTML = `
+    <div class="detail-panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <span style="font-size:16px;font-weight:500;">Bilag #${scan.id}</span>
+        <span class="badge badge-${scan.status.toLowerCase()}">${scan.status}</span>
+      </div>
+      <div class="detail-grid">
+        <div class="detail-field">
+          <label>Leverandor</label>
+          <div class="value">${scan.supplier_name || '\u2014'}</div>
+        </div>
+        <div class="detail-field">
+          <label>Org.nummer</label>
+          <div class="value">${scan.supplier_org_number || '\u2014'}</div>
+        </div>
+        <div class="detail-field">
+          <label>Belop</label>
+          <div class="value detail-amount">${fmt(scan.total_amount)} ${scan.currency}</div>
+        </div>
+        <div class="detail-field">
+          <label>MVA</label>
+          <div class="value">${fmt(scan.vat_amount)} ${scan.currency}</div>
+        </div>
+        <div class="detail-field">
+          <label>Fakturadato</label>
+          <div class="value">${scan.invoice_date || '\u2014'}</div>
+        </div>
+        <div class="detail-field">
+          <label>Forfallsdato</label>
+          <div class="value">${scan.due_date || '\u2014'}</div>
+        </div>
+        <div class="detail-field">
+          <label>Fakturanr.</label>
+          <div class="value">${scan.invoice_number || '\u2014'}</div>
+        </div>
+        <div class="detail-field">
+          <label>Match</label>
+          <div class="value"><span class="badge badge-${scan.match_level.toLowerCase()}">${scan.match_level}</span></div>
+        </div>
+        <div class="detail-field">
+          <label>Kontokode</label>
+          ${isPending ? `<input type="text" id="edit-account" value="${scan.account_code || ''}" placeholder="F.eks. 6900">` : `<div class="value">${scan.account_code || '\u2014'}</div>`}
+        </div>
+        <div class="detail-field">
+          <label>MVA-kode</label>
+          ${isPending ? `<input type="text" id="edit-vat" value="${scan.vat_code || ''}" placeholder="1=25%, 11=15%, 0=0%">` : `<div class="value">${scan.vat_code || '\u2014'}</div>`}
+        </div>
+      </div>
+      <div class="detail-actions">
+        ${isPending ? `
+          <button class="btn btn-approve" onclick="approveScan(${scan.id})">Godkjenn</button>
+          <button class="btn btn-reject" onclick="rejectScan(${scan.id})">Avvis</button>
+        ` : ''}
+        ${isApproved ? `
+          <button class="btn btn-fiken" onclick="postToFiken(${scan.id})">Bokfor til Fiken</button>
+        ` : ''}
+        <span class="status-msg">${scan.scanned_at ? 'Skannet ' + scan.scanned_at.substring(0, 16) : ''}</span>
+      </div>
+    </div>
+  `;
+}
+
+// Actions
+async function approveScan(id) {
+  const accountEl = document.getElementById('edit-account');
+  const vatEl = document.getElementById('edit-vat');
+  const body = {};
+  if (accountEl && accountEl.value) body.account_code = accountEl.value;
+  if (vatEl && vatEl.value) body.vat_code = vatEl.value;
+
+  try {
+    const res = await fetch(API + '/scans/' + id + '/approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) { toast(data.detail || 'Feil', 'error'); return; }
+    toast('Bilag #' + id + ' godkjent');
+    if (data.auto_approved) toast(data.supplier_name + ' er na auto-godkjent!');
+    showScanDetail(data);
+  } catch (err) { toast('Feil: ' + err.message, 'error'); }
+}
+
+async function rejectScan(id) {
+  try {
+    const res = await fetch(API + '/scans/' + id + '/reject', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) { toast(data.detail || 'Feil', 'error'); return; }
+    toast('Bilag #' + id + ' avvist');
+    showScanDetail(data);
+  } catch (err) { toast('Feil: ' + err.message, 'error'); }
+}
+
+async function postToFiken(id) {
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = 'Bokforer...';
+  try {
+    const res = await fetch(API + '/scans/' + id + '/fiken', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) { toast(data.detail || 'Fiken-feil', 'error'); btn.disabled = false; btn.textContent = 'Bokfor til Fiken'; return; }
+    toast('Bokfort til Fiken (kjop #' + data.purchase_id + ')');
+    showScanDetail(data.scan);
+  } catch (err) { toast('Feil: ' + err.message, 'error'); btn.disabled = false; btn.textContent = 'Bokfor til Fiken'; }
+}
+
+// Load lists
+async function loadPending() {
+  const container = document.getElementById('pending-list');
+  try {
+    const res = await fetch(API + '/scans?status=PENDING');
+    const scans = await res.json();
+    if (!scans.length) {
+      container.innerHTML = '<div class="empty"><div class="empty-text">Ingen ventende bilag</div><div class="empty-hint">Last opp et bilag for a komme i gang</div></div>';
+      return;
+    }
+    container.innerHTML = renderTable(scans, true);
+  } catch (err) { container.innerHTML = '<p>Feil ved lasting: ' + err.message + '</p>'; }
+}
+
+async function loadAll() {
+  const container = document.getElementById('all-list');
+  const statsBar = document.getElementById('stats-bar');
+  try {
+    const res = await fetch(API + '/scans');
+    const scans = await res.json();
+    if (!scans.length) {
+      statsBar.innerHTML = '';
+      container.innerHTML = '<div class="empty"><div class="empty-text">Ingen bilag enna</div><div class="empty-hint">Last opp et bilag for a komme i gang</div></div>';
+      return;
+    }
+
+    // Stats
+    const counts = {};
+    let total = 0;
+    scans.forEach(s => {
+      counts[s.status] = (counts[s.status] || 0) + 1;
+      if (s.total_amount) total += s.total_amount;
+    });
+    statsBar.innerHTML = Object.entries(counts).map(([k, v]) =>
+      `<div class="stat"><strong>${v}</strong>${k}</div>`
+    ).join('') + `<div class="stat"><strong>${fmt(total)}</strong>Totalt NOK</div>`;
+
+    container.innerHTML = renderTable(scans, false);
+  } catch (err) { container.innerHTML = '<p>Feil ved lasting: ' + err.message + '</p>'; }
+}
+
+function renderTable(scans, showActions) {
+  return `<table class="scan-table">
+    <thead><tr>
+      <th>ID</th><th>Leverandor</th><th>Belop</th><th>Dato</th><th>Konto</th><th>Match</th><th>Status</th>
+      ${showActions ? '<th></th>' : ''}
+    </tr></thead>
+    <tbody>${scans.map(s => `<tr style="cursor:pointer" onclick="loadDetail(${s.id})">
+      <td>${s.id}</td>
+      <td>${s.supplier_name || 'Ukjent'}</td>
+      <td style="text-align:right">${fmt(s.total_amount)} ${s.currency}</td>
+      <td>${s.invoice_date || '\u2014'}</td>
+      <td>${s.account_code || '\u2014'}</td>
+      <td><span class="badge badge-${s.match_level.toLowerCase()}">${s.match_level}</span></td>
+      <td><span class="badge badge-${s.status.toLowerCase()}">${s.status}</span></td>
+      ${showActions ? `<td class="btn-group">
+        <button class="btn btn-approve btn-sm" onclick="event.stopPropagation();approveScan(${s.id})">Godkjenn</button>
+        <button class="btn btn-reject btn-sm" onclick="event.stopPropagation();rejectScan(${s.id})">Avvis</button>
+      </td>` : ''}
+    </tr>`).join('')}</tbody>
+  </table>`;
+}
+
+async function loadDetail(id) {
+  try {
+    const res = await fetch(API + '/scans/' + id);
+    const scan = await res.json();
+    showView('upload');
+    showScanDetail(scan);
+  } catch (err) { toast('Feil: ' + err.message, 'error'); }
+}
+</script>
+</body>
+</html>

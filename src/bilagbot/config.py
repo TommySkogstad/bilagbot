@@ -11,8 +11,7 @@ load_dotenv()
 DATA_DIR = Path(os.getenv("BILAGBOT_DATA_DIR", Path.home() / ".bilagbot"))
 DB_PATH = DATA_DIR / "bilag.db"
 
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-5-20250514")
+CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "")
 
 AUTO_APPROVE_THRESHOLD = int(os.getenv("AUTO_APPROVE_THRESHOLD", "3"))
 

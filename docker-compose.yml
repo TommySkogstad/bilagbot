@@ -1,0 +1,70 @@
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    healthcheck:
+      test: ["CMD", "cloudflared", "version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    networks:
+      - bilagbot-network
+    depends_on:
+      nginx:
+        condition: service_healthy
+    logging: *default-logging
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "9500:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:80/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - bilagbot-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    logging: *default-logging
+
+  backend:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      BILAGBOT_DATA_DIR: /data
+    volumes:
+      - bilagbot-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - bilagbot-network
+    logging: *default-logging
+
+volumes:
+  bilagbot-data:
+
+networks:
+  bilagbot-network:
+    driver: bridge
