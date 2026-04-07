@@ -52,6 +52,7 @@ services:
       BILAGBOT_DATA_DIR: /data
     volumes:
       - bilagbot-data:/data
+      - ${HOME}/.claude/.credentials.json:/root/.claude/.credentials.json:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8086/api/health"]
       interval: 10s
