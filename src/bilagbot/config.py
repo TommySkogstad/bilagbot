@@ -5,8 +5,11 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Last .env fra current directory eller prosjektrot
-load_dotenv()
+# Last .env fra current directory eller prosjektrot (ignorerer krypterte filer)
+try:
+    load_dotenv()
+except UnicodeDecodeError:
+    pass  # git-crypt-kryptert .env i CI
 
 DATA_DIR = Path(os.getenv("BILAGBOT_DATA_DIR", Path.home() / ".bilagbot"))
 DB_PATH = DATA_DIR / "bilag.db"
