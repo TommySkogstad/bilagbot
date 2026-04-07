@@ -140,6 +140,20 @@ class TestApproveReject:
         assert res.status_code == 400
 
 
+class TestDelete:
+    def test_delete(self, client_with_scan):
+        res = client_with_scan.delete("/api/scans/1")
+        assert res.status_code == 200
+        assert res.json()["deleted"] == 1
+        # Verify gone
+        res = client_with_scan.get("/api/scans/1")
+        assert res.status_code == 404
+
+    def test_delete_not_found(self, client):
+        res = client.delete("/api/scans/999")
+        assert res.status_code == 404
+
+
 class TestUpload:
     def test_unsupported_type(self, client):
         res = client.post("/api/scan", files={"file": ("test.docx", b"dummy", "application/octet-stream")})

@@ -305,6 +305,7 @@ function showScanDetail(scan) {
         ${isApproved ? `
           <button class="btn btn-fiken" onclick="postToFiken(${scan.id})">Bokfor til Fiken</button>
         ` : ''}
+        <button class="btn btn-sm" style="background:var(--red);color:var(--white);margin-left:auto;" onclick="deleteScan(${scan.id})">Slett</button>
         <span class="status-msg">${scan.scanned_at ? 'Skannet ' + scan.scanned_at.substring(0, 16) : ''}</span>
       </div>
     </div>
@@ -340,6 +341,19 @@ async function rejectScan(id) {
     if (!res.ok) { toast(data.detail || 'Feil', 'error'); return; }
     toast('Bilag #' + id + ' avvist');
     showScanDetail(data);
+  } catch (err) { toast('Feil: ' + err.message, 'error'); }
+}
+
+async function deleteScan(id) {
+  if (!confirm('Er du sikker pa at du vil slette bilag #' + id + '?')) return;
+  try {
+    const res = await fetch(API + '/scans/' + id, { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok) { toast(data.detail || 'Feil', 'error'); return; }
+    toast('Bilag #' + id + ' slettet');
+    document.getElementById('scan-result').innerHTML = '';
+    if (document.getElementById('view-pending').style.display !== 'none') loadPending();
+    if (document.getElementById('view-all').style.display !== 'none') loadAll();
   } catch (err) { toast('Feil: ' + err.message, 'error'); }
 }
 
@@ -414,6 +428,7 @@ function renderTable(scans, showActions) {
       ${showActions ? `<td class="btn-group">
         <button class="btn btn-approve btn-sm" onclick="event.stopPropagation();approveScan(${s.id})">Godkjenn</button>
         <button class="btn btn-reject btn-sm" onclick="event.stopPropagation();rejectScan(${s.id})">Avvis</button>
+        <button class="btn btn-sm" style="background:var(--red);color:var(--white)" onclick="event.stopPropagation();deleteScan(${s.id})">Slett</button>
       </td>` : ''}
     </tr>`).join('')}</tbody>
   </table>`;

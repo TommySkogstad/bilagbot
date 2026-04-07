@@ -232,6 +232,28 @@ async def api_reject(scan_id: int):
         conn.close()
 
 
+@app.delete("/api/scans/{scan_id}")
+async def api_delete(scan_id: int):
+    """Slett et bilag permanent."""
+    conn = get_connection()
+    try:
+        row = get_scan(conn, scan_id)
+        if not row:
+            raise HTTPException(404, f"Bilag #{scan_id} finnes ikke")
+
+        # Slett opplastet fil
+        if row["file_path"]:
+            p = Path(row["file_path"])
+            if p.exists():
+                p.unlink()
+
+        conn.execute("DELETE FROM scan_log WHERE id = ?", (scan_id,))
+        conn.commit()
+        return {"deleted": scan_id}
+    finally:
+        conn.close()
+
+
 @app.post("/api/scans/{scan_id}/fiken")
 async def api_fiken_post(scan_id: int):
     """Bokfor et godkjent bilag til Fiken."""
