@@ -5,6 +5,7 @@ import json
 import mimetypes
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -85,21 +86,28 @@ def scan_file(path: Path, *, model: str | None = None) -> tuple[InvoiceData, str
     if model or CLAUDE_MODEL:
         cmd.extend(["--model", model or CLAUDE_MODEL])
 
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-    except subprocess.TimeoutExpired:
-        raise ScannerError("Claude CLI tidsavbrudd (120s)")
-    except OSError as e:
-        raise ScannerError(f"Kunne ikke kjore Claude CLI: {e}")
+    max_attempts = 3
+    last_stderr = ""
+    for attempt in range(max_attempts):
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        except subprocess.TimeoutExpired:
+            raise ScannerError("Claude CLI tidsavbrudd (120s)")
+        except OSError as e:
+            raise ScannerError(f"Kunne ikke kjore Claude CLI: {e}")
 
-    if result.returncode != 0:
-        stderr = result.stderr.strip()
-        raise ScannerError(f"Claude CLI feilet (kode {result.returncode}): {stderr}")
+        if result.returncode == 0:
+            break
+        last_stderr = result.stderr.strip()
+        if attempt < max_attempts - 1:
+            time.sleep(2 ** attempt)
+    else:
+        raise ScannerError(f"Claude CLI feilet etter {max_attempts} forsok: {last_stderr}")
 
     # Claude CLI med --output-format json returnerer et JSON-objekt med "result" felt
     try:
