@@ -128,6 +128,36 @@ class TestStatusCommand:
         assert "Ingen bilag" in result.output
 
 
+class TestFikenPostCommand:
+    def _setup_approved_scan(self, tmp_path, invoice_date="2025-01-15"):
+        db_path = tmp_path / "test.db"
+        conn = get_connection(db_path=db_path)
+        from bilagbot.database import update_scan_status
+        scan_id = insert_scan(
+            conn, file_path="/tmp/test.pdf", file_hash="abc",
+            supplier_org_number="988312495", supplier_name="Telenor",
+            total_amount=599.0, vat_amount=119.8, currency="NOK",
+            invoice_date=invoice_date, due_date="2025-02-15",
+            invoice_number="INV-001", match_level="KNOWN",
+            account_code="6900", vat_code="1", raw_claude_json="{}",
+        )
+        update_scan_status(conn, scan_id, "APPROVED")
+        return conn, scan_id
+
+    def test_post_missing_invoice_date_blocks(self, runner, tmp_path):
+        conn, scan_id = self._setup_approved_scan(tmp_path, invoice_date=None)
+        with patch("bilagbot.cli.get_connection", return_value=conn):
+            result = runner.invoke(main, ["fiken", "post", str(scan_id)])
+        assert "fakturadato" in result.output.lower()
+        assert result.exit_code == 0  # graceful exit, not crash
+
+    def test_post_pending_skips_missing_invoice_date(self, runner, tmp_path):
+        conn, _ = self._setup_approved_scan(tmp_path, invoice_date=None)
+        with patch("bilagbot.cli.get_connection", return_value=conn):
+            result = runner.invoke(main, ["fiken", "post-pending"])
+        assert "fakturadato" in result.output.lower()
+
+
 class TestSuppliersCommand:
     def test_suppliers_list_empty(self, runner, tmp_path):
         db_path = tmp_path / "test.db"

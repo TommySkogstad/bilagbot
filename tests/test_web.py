@@ -154,6 +154,32 @@ class TestDelete:
         assert res.status_code == 404
 
 
+class TestFikenPost:
+    @pytest.fixture
+    def client_approved_no_date(self, tmp_path):
+        db_path = tmp_path / "test.db"
+        conn = _make_conn(db_path)
+        from bilagbot.database import update_scan_status
+        insert_scan(
+            conn, file_path="/tmp/test.pdf", file_hash="xyz",
+            supplier_org_number="988312495", supplier_name="Telenor",
+            total_amount=599.0, vat_amount=119.8, currency="NOK",
+            invoice_date=None, due_date=None,
+            invoice_number="INV-001", match_level="KNOWN",
+            account_code="6900", vat_code="1", raw_claude_json="{}",
+        )
+        update_scan_status(conn, 1, "APPROVED")
+        conn.close()
+        with patch("bilagbot.web.get_connection", side_effect=lambda: _make_conn(db_path)):
+            with TestClient(app) as c:
+                yield c
+
+    def test_post_missing_invoice_date_returns_400(self, client_approved_no_date):
+        res = client_approved_no_date.post("/api/scans/1/fiken")
+        assert res.status_code == 400
+        assert "fakturadato" in res.json()["detail"].lower()
+
+
 class TestUpload:
     def test_unsupported_type(self, client):
         res = client.post("/api/scan", files={"file": ("test.docx", b"dummy", "application/octet-stream")})

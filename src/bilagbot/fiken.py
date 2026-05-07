@@ -306,6 +306,9 @@ class FikenClient:
         Returns:
             Purchase ID fra Fiken
         """
+        if not invoice_date or invoice_date == "1970-01-01":
+            raise FikenValidationError("Fakturadato mangler — bilag kan ikke bokføres uten gyldig fakturadato")
+
         # 1. Finn eller opprett kontakt
         contact_id = None
         if vendor_name:
@@ -313,7 +316,7 @@ class FikenClient:
 
         # 2. Opprett kjøp
         purchase_id = self.create_purchase(
-            date=invoice_date or "1970-01-01",
+            date=invoice_date,
             due_date=due_date,
             identifier=invoice_number,
             kid=payment_reference,

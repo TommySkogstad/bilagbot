@@ -319,6 +319,37 @@ class TestPostInvoice:
         assert purchase_id == 400
 
 
+    def test_missing_invoice_date_raises(self, client, mock_http):
+        with pytest.raises(FikenValidationError, match="fakturadato"):
+            client.post_invoice(
+                vendor_name="Test AS",
+                vendor_org_number=None,
+                invoice_date=None,
+                due_date=None,
+                invoice_number=None,
+                payment_reference=None,
+                total_amount=100.00,
+                account_code="6900",
+                vat_code="1",
+                description="Test",
+            )
+
+    def test_epoch_date_rejected(self, client, mock_http):
+        with pytest.raises(FikenValidationError, match="fakturadato"):
+            client.post_invoice(
+                vendor_name="Test AS",
+                vendor_org_number=None,
+                invoice_date="1970-01-01",
+                due_date=None,
+                invoice_number=None,
+                payment_reference=None,
+                total_amount=100.00,
+                account_code="6900",
+                vat_code="1",
+                description="Test",
+            )
+
+
 # --- Retry-logikk ---
 
 

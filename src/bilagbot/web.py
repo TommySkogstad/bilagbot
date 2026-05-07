@@ -266,6 +266,8 @@ async def api_fiken_post(scan_id: int):
             raise HTTPException(400, f"Bilag #{scan_id} har status {row['status']} — kun APPROVED kan bokfores")
         if not row["account_code"]:
             raise HTTPException(400, f"Bilag #{scan_id} mangler kontokode")
+        if not row["invoice_date"]:
+            raise HTTPException(400, f"Bilag #{scan_id} mangler fakturadato — rediger bilaget og legg inn dato før bokføring")
 
         from bilagbot.fiken import FikenClient
 
@@ -276,7 +278,7 @@ async def api_fiken_post(scan_id: int):
             purchase_id = client.post_invoice(
                 vendor_name=row["supplier_name"] or "Ukjent leverandor",
                 vendor_org_number=row["supplier_org_number"],
-                invoice_date=row["invoice_date"] or "1970-01-01",
+                invoice_date=row["invoice_date"],
                 due_date=row["due_date"],
                 invoice_number=row["invoice_number"],
                 payment_reference=None,
