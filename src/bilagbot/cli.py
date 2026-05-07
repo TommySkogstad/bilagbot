@@ -328,6 +328,11 @@ def fiken_post(scan_id: int):
         conn.close()
         return
 
+    if not row["invoice_date"]:
+        console.print(f"[red]Bilag #{scan_id} mangler fakturadato — legg inn dato før bokføring[/red]")
+        conn.close()
+        return
+
     from bilagbot.fiken import FikenClient
 
     try:
@@ -337,7 +342,7 @@ def fiken_post(scan_id: int):
         purchase_id = client.post_invoice(
             vendor_name=row["supplier_name"] or "Ukjent leverandør",
             vendor_org_number=row["supplier_org_number"],
-            invoice_date=row["invoice_date"] or "1970-01-01",
+            invoice_date=row["invoice_date"],
             due_date=row["due_date"],
             invoice_number=row["invoice_number"],
             payment_reference=None,
@@ -375,6 +380,13 @@ def fiken_post_pending():
     if skipped:
         console.print(f"[yellow]Hopper over {skipped} bilag uten kontokode[/yellow]")
 
+    no_date = [r for r in postable if not r["invoice_date"]]
+    postable = [r for r in postable if r["invoice_date"]]
+
+    if no_date:
+        ids = [r["id"] for r in no_date]
+        console.print(f"[yellow]Hopper over {len(no_date)} bilag uten fakturadato: {ids}[/yellow]")
+
     if not postable:
         console.print("[yellow]Ingen bilag med kontokode å bokføre.[/yellow]")
         conn.close()
@@ -393,7 +405,7 @@ def fiken_post_pending():
                 purchase_id = client.post_invoice(
                     vendor_name=row["supplier_name"] or "Ukjent leverandør",
                     vendor_org_number=row["supplier_org_number"],
-                    invoice_date=row["invoice_date"] or "1970-01-01",
+                    invoice_date=row["invoice_date"],
                     due_date=row["due_date"],
                     invoice_number=row["invoice_number"],
                     payment_reference=None,
