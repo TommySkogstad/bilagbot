@@ -73,14 +73,15 @@ def get_connection(db_path: Path | None = None) -> sqlite3.Connection:
     return conn
 
 
-def _run_migrations(conn: sqlite3.Connection) -> None:
+def _run_migrations(conn: sqlite3.Connection, migrations: list[str] | None = None) -> None:
     """Kjør migrasjoner som legger til nye kolonner (ignorerer duplikater)."""
-    for sql in MIGRATIONS:
+    for sql in (migrations if migrations is not None else MIGRATIONS):
         try:
             conn.execute(sql)
             conn.commit()
-        except sqlite3.OperationalError:
-            pass  # Kolonne finnes allerede
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" not in str(e).lower() and "already exists" not in str(e).lower():
+                raise
 
 
 def insert_scan(conn: sqlite3.Connection, *, file_path: str, file_hash: str, supplier_org_number: str | None,
