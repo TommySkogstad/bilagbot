@@ -124,6 +124,48 @@ class TestScanFile:
             with pytest.raises(ScannerError, match="tidsavbrudd"):
                 scan_file(sample_pdf)
 
+    def test_retry_pa_midlertidig_feil(self, sample_pdf, known_response):
+        """CLI feiler 2 ganger, lykkes pa 3. forsok — scan skal returnere resultat."""
+        cli_output = json.dumps({"result": json.dumps(known_response)})
+        ok_result = MagicMock()
+        ok_result.returncode = 0
+        ok_result.stdout = cli_output
+        ok_result.stderr = ""
+
+        fail_result = MagicMock()
+        fail_result.returncode = 1
+        fail_result.stdout = ""
+        fail_result.stderr = "Error: rate limit exceeded"
+
+        call_count = 0
+
+        def side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            return fail_result if call_count < 3 else ok_result
+
+        with patch("bilagbot.scanner.shutil.which", return_value="/usr/bin/claude"), \
+             patch("bilagbot.scanner.subprocess.run", side_effect=side_effect), \
+             patch("bilagbot.scanner.time.sleep"):
+            invoice, raw_json = scan_file(sample_pdf)
+
+        assert call_count == 3
+        assert isinstance(invoice, InvoiceData)
+        assert invoice.vendor_name == "Telenor Norge AS"
+
+    def test_retry_alle_forsok_feiler(self, sample_pdf):
+        """CLI feiler alle 3 forsok — skal kaste ScannerError etter siste forsok."""
+        fail_result = MagicMock()
+        fail_result.returncode = 1
+        fail_result.stdout = ""
+        fail_result.stderr = "Error: service unavailable"
+
+        with patch("bilagbot.scanner.shutil.which", return_value="/usr/bin/claude"), \
+             patch("bilagbot.scanner.subprocess.run", return_value=fail_result), \
+             patch("bilagbot.scanner.time.sleep"):
+            with pytest.raises(ScannerError, match="etter 3 forsok"):
+                scan_file(sample_pdf)
+
     def test_invalid_schema_raises_scanner_error(self, sample_pdf):
         """Gyldig JSON men feil schema (ValidationError) skal gi ScannerError med presist budskap."""
         invalid_schema = json.dumps({"line_items": "ikke_en_liste"})
