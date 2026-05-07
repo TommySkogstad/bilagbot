@@ -1,5 +1,6 @@
 """FastAPI web-app for BilagBot."""
 
+import asyncio
 import logging
 import shutil
 from pathlib import Path
@@ -116,7 +117,7 @@ async def api_scan(file: UploadFile = File(...)):
 
         # Scan med Claude CLI
         try:
-            invoice, raw_json = scan_file(dest)
+            invoice, raw_json = await asyncio.to_thread(scan_file, dest)
         except ScannerError as e:
             dest.unlink()
             raise HTTPException(500, f"Scanfeil: {e}")

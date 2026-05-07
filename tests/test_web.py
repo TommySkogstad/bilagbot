@@ -184,3 +184,39 @@ class TestUpload:
     def test_unsupported_type(self, client):
         res = client.post("/api/scan", files={"file": ("test.docx", b"dummy", "application/octet-stream")})
         assert res.status_code == 400
+
+
+class TestScanAsync:
+    def test_scan_delegates_to_asyncio_thread(self, client, tmp_path):
+        """api_scan bruker asyncio.to_thread() for scan_file() for ikke å blokkere event loop."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from bilagbot.models import InvoiceData
+
+        dummy_invoice = InvoiceData(vendor_name="Test AS")
+        dummy_json = '{"vendor_name": "Test AS"}'
+
+        mock_result = MagicMock()
+        mock_result.match_level.value = "UNKNOWN"
+        mock_result.supplier_name = "Test AS"
+        mock_result.account_code = None
+        mock_result.vat_code = None
+
+        mock_to_thread = AsyncMock(return_value=(dummy_invoice, dummy_json))
+
+        with patch("asyncio.to_thread", mock_to_thread), \
+             patch("bilagbot.web.scan_file"), \
+             patch("bilagbot.web.ensure_data_dir"), \
+             patch("bilagbot.web.file_hash", return_value="uniquehash999"), \
+             patch("bilagbot.web.find_duplicate", return_value=None), \
+             patch("bilagbot.web.classify", return_value=mock_result), \
+             patch("bilagbot.web.insert_scan", return_value=42), \
+             patch("bilagbot.web.get_scan", return_value={"id": 42, "status": "PENDING"}), \
+             patch("bilagbot.web.UPLOAD_DIR", tmp_path):
+            res = client.post(
+                "/api/scan",
+                files={"file": ("faktura.pdf", b"%PDF-1.4", "application/pdf")},
+            )
+
+        assert res.status_code == 200
+        assert mock_to_thread.called, "scan_file() delegeres ikke til asyncio.to_thread()"
