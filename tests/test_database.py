@@ -1,7 +1,12 @@
 """Tester for databaseoperasjoner."""
 
+import sqlite3
+
+import pytest
 
 from bilagbot.database import (
+    _run_migrations,
+
     find_duplicate,
     get_all_scans,
     get_all_suppliers,
@@ -158,3 +163,21 @@ class TestSuppliers:
         supplier = get_supplier(db, "123456789")
         assert supplier["account_code"] == "6900"
         assert supplier["vat_code"] == "1"
+
+
+class TestRunMigrations:
+    def _make_conn(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE t (a TEXT)")
+        conn.commit()
+        return conn
+
+    def test_invalid_sql_raises(self):
+        conn = self._make_conn()
+        with pytest.raises(sqlite3.OperationalError):
+            _run_migrations(conn, migrations=["THIS IS NOT VALID SQL !!!"])
+
+    def test_duplicate_column_ignored(self):
+        conn = self._make_conn()
+        _run_migrations(conn, migrations=["ALTER TABLE t ADD COLUMN b TEXT"])
+        _run_migrations(conn, migrations=["ALTER TABLE t ADD COLUMN b TEXT"])
