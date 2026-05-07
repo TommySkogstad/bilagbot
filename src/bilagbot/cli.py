@@ -329,7 +329,7 @@ def fiken_post(scan_id: int):
         return
 
     if not row["invoice_date"]:
-        console.print(f"[red]Bilag #{scan_id} mangler fakturadato — rediger bilaget og legg inn dato før bokføring[/red]")
+        console.print(f"[red]Bilag #{scan_id} mangler fakturadato — legg inn dato før bokføring[/red]")
         conn.close()
         return
 
@@ -384,7 +384,8 @@ def fiken_post_pending():
     postable = [r for r in postable if r["invoice_date"]]
 
     if no_date:
-        console.print(f"[yellow]Hopper over {len(no_date)} bilag uten fakturadato: {[r['id'] for r in no_date]}[/yellow]")
+        ids = [r["id"] for r in no_date]
+        console.print(f"[yellow]Hopper over {len(no_date)} bilag uten fakturadato: {ids}[/yellow]")
 
     if not postable:
         console.print("[yellow]Ingen bilag med kontokode å bokføre.[/yellow]")

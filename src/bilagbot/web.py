@@ -267,7 +267,7 @@ async def api_fiken_post(scan_id: int):
         if not row["account_code"]:
             raise HTTPException(400, f"Bilag #{scan_id} mangler kontokode")
         if not row["invoice_date"]:
-            raise HTTPException(400, f"Bilag #{scan_id} mangler fakturadato — rediger bilaget og legg inn dato før bokføring")
+            raise HTTPException(400, f"Bilag #{scan_id} mangler fakturadato — legg inn dato før bokføring")
 
         from bilagbot.fiken import FikenClient
 
