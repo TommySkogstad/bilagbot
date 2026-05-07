@@ -7,6 +7,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from bilagbot.config import CLAUDE_MODEL
 from bilagbot.exceptions import ScannerError
 from bilagbot.models import InvoiceData
@@ -111,8 +113,8 @@ def scan_file(path: Path, *, model: str | None = None) -> tuple[InvoiceData, str
 
     try:
         invoice = InvoiceData.model_validate_json(raw_json)
-    except Exception as e:
-        raise ScannerError(f"Kunne ikke parse Claude-respons som InvoiceData: {e}")
+    except ValidationError as e:
+        raise ScannerError(f"Claude-respons matchet ikke InvoiceData-schema: {e}") from e
 
     return invoice, raw_json
 

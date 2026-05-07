@@ -123,3 +123,17 @@ class TestScanFile:
              patch("bilagbot.scanner.subprocess.run", side_effect=subprocess.TimeoutExpired("claude", 120)):
             with pytest.raises(ScannerError, match="tidsavbrudd"):
                 scan_file(sample_pdf)
+
+    def test_invalid_schema_raises_scanner_error(self, sample_pdf):
+        """Gyldig JSON men feil schema (ValidationError) skal gi ScannerError med presist budskap."""
+        invalid_schema = json.dumps({"line_items": "ikke_en_liste"})
+        cli_output = json.dumps({"result": invalid_schema})
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = cli_output
+        mock_result.stderr = ""
+
+        with patch("bilagbot.scanner.shutil.which", return_value="/usr/bin/claude"), \
+             patch("bilagbot.scanner.subprocess.run", return_value=mock_result):
+            with pytest.raises(ScannerError, match="matchet ikke InvoiceData-schema"):
+                scan_file(sample_pdf)
