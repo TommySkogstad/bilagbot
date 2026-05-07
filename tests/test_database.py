@@ -6,7 +6,6 @@ import pytest
 
 from bilagbot.database import (
     _run_migrations,
-
     find_duplicate,
     get_all_scans,
     get_all_suppliers,
