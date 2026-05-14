@@ -1,5 +1,6 @@
 """Pydantic-modeller for BilagBot."""
 
+import re
 from enum import Enum
 
 from pydantic import BaseModel, field_validator
@@ -14,6 +15,13 @@ class LineItem(BaseModel):
     amount: float | None = None
     vat_rate: float | None = None
     vat_amount: float | None = None
+
+    @field_validator("vat_rate")
+    @classmethod
+    def vat_rate_in_range(cls, v: float | None) -> float | None:
+        if v is not None and not (0.0 <= v <= 100.0):
+            raise ValueError(f"MVA-sats må være mellom 0 og 100: {v}")
+        return v
 
 
 class InvoiceData(BaseModel):
@@ -35,11 +43,39 @@ class InvoiceData(BaseModel):
     suggested_vat_code: str | None = None
     line_items: list[LineItem] = []
 
+    @field_validator("invoice_date", "due_date", mode="before")
+    @classmethod
+    def validate_date_format(cls, v: str | None) -> str | None:
+        if v is not None and not re.match(r"^\d{4}-\d{2}-\d{2}$", v):
+            raise ValueError(f"Ugyldig datoformat (forventet YYYY-MM-DD): {v}")
+        return v
+
+    @field_validator("vendor_org_number", mode="before")
+    @classmethod
+    def validate_org_number(cls, v: str | None) -> str | None:
+        if v is not None and not re.match(r"^\d{9}$", v):
+            raise ValueError(f"Org.nr. må være nøyaktig 9 sifre: {v}")
+        return v
+
     @field_validator("total_amount", "vat_amount")
     @classmethod
     def must_be_non_negative(cls, v: float | None) -> float | None:
         if v is not None and v < 0:
             raise ValueError("Beløp kan ikke være negativt")
+        return v
+
+    @field_validator("confidence")
+    @classmethod
+    def confidence_in_range(cls, v: float | None) -> float | None:
+        if v is not None and not (0.0 <= v <= 1.0):
+            raise ValueError(f"Confidence må være mellom 0.0 og 1.0: {v}")
+        return v
+
+    @field_validator("vat_rate")
+    @classmethod
+    def vat_rate_in_range(cls, v: float | None) -> float | None:
+        if v is not None and not (0.0 <= v <= 100.0):
+            raise ValueError(f"MVA-sats må være mellom 0 og 100: {v}")
         return v
 
 
