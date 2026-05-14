@@ -245,6 +245,90 @@ class TestSanitizeFilename:
         assert len(result) <= 200
 
 
+class TestAuth:
+    """Tester for HTTP Basic Auth-beskyttelse av API-endepunkter."""
+
+    @pytest.fixture
+    def auth_client(self, tmp_path, monkeypatch):
+        """Klient med auth aktivert (AUTH_USER/AUTH_PASS satt)."""
+        monkeypatch.setattr("bilagbot.web.AUTH_USER", "testuser")
+        monkeypatch.setattr("bilagbot.web.AUTH_PASS", "testpass")
+        db_path = tmp_path / "test.db"
+        conn = _make_conn(db_path)
+        insert_scan(
+            conn, file_path="/tmp/test.pdf", file_hash="abc123",
+            supplier_org_number="988312495", supplier_name="Telenor",
+            total_amount=599.0, vat_amount=119.8, currency="NOK",
+            invoice_date="2025-01-15", due_date=None,
+            invoice_number="INV-001", match_level="UNKNOWN",
+            account_code="6900", vat_code="1", raw_claude_json="{}",
+        )
+        conn.close()
+        with patch("bilagbot.web.get_connection", side_effect=lambda: _make_conn(db_path)):
+            with TestClient(app) as c:
+                yield c
+
+    def test_health_open_without_auth(self, auth_client):
+        """Helsesjekken skal vaere aapen ogsaa naar auth er aktivert."""
+        res = auth_client.get("/api/health")
+        assert res.status_code == 200
+
+    def test_scans_list_requires_auth(self, auth_client):
+        """GET /api/scans uten credentials skal returnere 401."""
+        res = auth_client.get("/api/scans")
+        assert res.status_code == 401
+
+    def test_scan_detail_requires_auth(self, auth_client):
+        res = auth_client.get("/api/scans/1")
+        assert res.status_code == 401
+
+    def test_approve_requires_auth(self, auth_client):
+        res = auth_client.post("/api/scans/1/approve")
+        assert res.status_code == 401
+
+    def test_reject_requires_auth(self, auth_client):
+        res = auth_client.post("/api/scans/1/reject")
+        assert res.status_code == 401
+
+    def test_delete_requires_auth(self, auth_client):
+        res = auth_client.delete("/api/scans/1")
+        assert res.status_code == 401
+
+    def test_fiken_requires_auth(self, auth_client):
+        res = auth_client.post("/api/scans/1/fiken")
+        assert res.status_code == 401
+
+    def test_scan_upload_requires_auth(self, auth_client):
+        res = auth_client.post("/api/scan", files={"file": ("t.pdf", b"x", "application/pdf")})
+        assert res.status_code == 401
+
+    def test_index_requires_auth(self, auth_client):
+        res = auth_client.get("/")
+        assert res.status_code == 401
+
+    def test_wrong_password_returns_401(self, auth_client):
+        res = auth_client.get("/api/scans", auth=("testuser", "feilpassord"))
+        assert res.status_code == 401
+
+    def test_wrong_username_returns_401(self, auth_client):
+        res = auth_client.get("/api/scans", auth=("feilbruker", "testpass"))
+        assert res.status_code == 401
+
+    def test_correct_credentials_returns_200(self, auth_client):
+        res = auth_client.get("/api/scans", auth=("testuser", "testpass"))
+        assert res.status_code == 200
+        assert len(res.json()) == 1
+
+    def test_correct_credentials_on_detail(self, auth_client):
+        res = auth_client.get("/api/scans/1", auth=("testuser", "testpass"))
+        assert res.status_code == 200
+
+    def test_auth_disabled_when_unset(self, client):
+        """Naar AUTH_USER/AUTH_PASS er tomme, skal endepunkter vaere aapne (dev-modus)."""
+        res = client.get("/api/scans")
+        assert res.status_code == 200
+
+
 class TestScanAsync:
     def test_scan_delegates_to_asyncio_thread(self, client, tmp_path):
         """api_scan bruker asyncio.to_thread() for scan_file() for ikke å blokkere event loop."""

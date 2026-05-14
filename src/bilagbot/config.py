@@ -18,6 +18,10 @@ CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "")
 
 AUTO_APPROVE_THRESHOLD = int(os.getenv("AUTO_APPROVE_THRESHOLD", "3"))
 
+# HTTP Basic Auth for web-UI/API. Aktiveres kun naar baade AUTH_USER og AUTH_PASS er satt.
+AUTH_USER = os.getenv("AUTH_USER", "")
+AUTH_PASS = os.getenv("AUTH_PASS", "")
+
 # Fiken API
 FIKEN_API_TOKEN = os.getenv("FIKEN_API_TOKEN", "")
 FIKEN_COMPANY_SLUG = os.getenv("FIKEN_COMPANY_SLUG", "")
