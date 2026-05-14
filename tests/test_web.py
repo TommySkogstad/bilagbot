@@ -125,8 +125,12 @@ def client_with_scan_and_fiken_accounts(tmp_path):
         invoice_number="INV-001", match_level="UNKNOWN",
         account_code="6900", vat_code="1", raw_claude_json="{}",
     )
-    conn.execute("INSERT INTO fiken_accounts (code, name, last_synced_at) VALUES ('6900', 'Telefon', '2025-01-01')")
-    conn.execute("INSERT INTO fiken_accounts (code, name, last_synced_at) VALUES ('7100', 'IT-kostnader', '2025-01-01')")
+    conn.execute(
+        "INSERT INTO fiken_accounts (code, name, last_synced_at) VALUES ('6900', 'Telefon', '2025-01-01')"
+    )
+    conn.execute(
+        "INSERT INTO fiken_accounts (code, name, last_synced_at) VALUES ('7100', 'IT-kostnader', '2025-01-01')"
+    )
     conn.commit()
     conn.close()
     with patch("bilagbot.web.get_connection", side_effect=lambda: _make_conn(db_path)):
