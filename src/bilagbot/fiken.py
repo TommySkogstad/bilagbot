@@ -3,6 +3,7 @@
 import logging
 import time
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -318,6 +319,12 @@ class FikenClient:
         """
         if not invoice_date or invoice_date == "1970-01-01":
             raise FikenValidationError("Fakturadato mangler — bilag kan ikke bokføres uten gyldig fakturadato")
+        try:
+            datetime.strptime(invoice_date, "%Y-%m-%d")
+        except ValueError:
+            raise FikenValidationError(
+                f"Ugyldig datoformat for fakturadato: '{invoice_date}' — forventet YYYY-MM-DD"
+            )
 
         # 1. Finn eller opprett kontakt
         contact_id = None
