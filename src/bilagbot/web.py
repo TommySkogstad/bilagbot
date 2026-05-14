@@ -3,17 +3,24 @@
 import asyncio
 import logging
 import re
+import secrets
 import shutil
 import unicodedata
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from bilagbot.classifier import classify, learn_from_approval
-from bilagbot.config import DATA_DIR, ensure_data_dir
+from bilagbot.config import (  # noqa: F401  # AUTH_USER/AUTH_PASS leses via modul-attributter for testbar monkeypatch
+    AUTH_PASS,
+    AUTH_USER,
+    DATA_DIR,
+    ensure_data_dir,
+)
 from bilagbot.database import (
     find_duplicate,
     get_all_scans,
@@ -33,6 +40,39 @@ from bilagbot.scanner import file_hash, scan_file
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="BilagBot", version="0.2.0")
+
+_security = HTTPBasic(auto_error=False)
+
+
+def _auth_enabled() -> bool:
+    """Auth aktiveres kun naar baade AUTH_USER og AUTH_PASS er satt."""
+    from bilagbot import web as _self  # les verdier dynamisk for testbar monkeypatch
+    return bool(_self.AUTH_USER and _self.AUTH_PASS)
+
+
+def require_auth(
+    credentials: HTTPBasicCredentials | None = Depends(_security),
+) -> None:
+    """Krev HTTP Basic Auth naar AUTH_USER og AUTH_PASS er konfigurert."""
+    from bilagbot import web as _self
+
+    if not _auth_enabled():
+        return
+
+    unauthorized = HTTPException(
+        status_code=401,
+        detail="Ugyldig brukernavn eller passord",
+        headers={"WWW-Authenticate": "Basic"},
+    )
+
+    if credentials is None:
+        raise unauthorized
+
+    user_ok = secrets.compare_digest(credentials.username, _self.AUTH_USER)
+    pass_ok = secrets.compare_digest(credentials.password, _self.AUTH_PASS)
+    if not (user_ok and pass_ok):
+        raise unauthorized
+
 
 _SAFE_NAME_RE = re.compile(r"[^\w.\-]")
 
@@ -84,7 +124,7 @@ def _row_to_dict(row) -> dict:
     return {k: row[k] for k in row.keys()}
 
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse, dependencies=[Depends(require_auth)])
 async def index():
     """Serve hovedsiden."""
     html_path = STATIC_DIR / "index.html"
@@ -98,7 +138,7 @@ async def health():
     return {"status": "ok"}
 
 
-@app.post("/api/scan")
+@app.post("/api/scan", dependencies=[Depends(require_auth)])
 async def api_scan(file: UploadFile = File(...)):
     """Last opp og scan et bilag."""
     ensure_data_dir()
@@ -173,7 +213,7 @@ async def api_scan(file: UploadFile = File(...)):
         conn.close()
 
 
-@app.get("/api/scans")
+@app.get("/api/scans", dependencies=[Depends(require_auth)])
 async def api_scans(status: str | None = None):
     """Hent alle bilag, eventuelt filtrert pa status."""
     conn = get_connection()
@@ -187,7 +227,7 @@ async def api_scans(status: str | None = None):
         conn.close()
 
 
-@app.get("/api/scans/{scan_id}")
+@app.get("/api/scans/{scan_id}", dependencies=[Depends(require_auth)])
 async def api_scan_detail(scan_id: int):
     """Hent detaljer for ett bilag."""
     conn = get_connection()
@@ -200,7 +240,7 @@ async def api_scan_detail(scan_id: int):
         conn.close()
 
 
-@app.post("/api/scans/{scan_id}/approve")
+@app.post("/api/scans/{scan_id}/approve", dependencies=[Depends(require_auth)])
 async def api_approve(scan_id: int, body: ApproveRequest | None = None):
     """Godkjenn et bilag og lar leverandoren."""
     conn = get_connection()
@@ -239,7 +279,7 @@ async def api_approve(scan_id: int, body: ApproveRequest | None = None):
         conn.close()
 
 
-@app.post("/api/scans/{scan_id}/reject")
+@app.post("/api/scans/{scan_id}/reject", dependencies=[Depends(require_auth)])
 async def api_reject(scan_id: int):
     """Avvis et bilag."""
     conn = get_connection()
@@ -256,7 +296,7 @@ async def api_reject(scan_id: int):
         conn.close()
 
 
-@app.delete("/api/scans/{scan_id}")
+@app.delete("/api/scans/{scan_id}", dependencies=[Depends(require_auth)])
 async def api_delete(scan_id: int):
     """Slett et bilag permanent."""
     conn = get_connection()
@@ -282,7 +322,7 @@ async def api_delete(scan_id: int):
         conn.close()
 
 
-@app.post("/api/scans/{scan_id}/fiken")
+@app.post("/api/scans/{scan_id}/fiken", dependencies=[Depends(require_auth)])
 async def api_fiken_post(scan_id: int):
     """Bokfor et godkjent bilag til Fiken."""
     conn = get_connection()
