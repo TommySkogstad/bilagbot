@@ -2,7 +2,7 @@
 
 from enum import Enum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class LineItem(BaseModel):
@@ -34,6 +34,13 @@ class InvoiceData(BaseModel):
     suggested_account: str | None = None
     suggested_vat_code: str | None = None
     line_items: list[LineItem] = []
+
+    @field_validator("total_amount", "vat_amount")
+    @classmethod
+    def must_be_non_negative(cls, v: float | None) -> float | None:
+        if v is not None and v < 0:
+            raise ValueError("Beløp kan ikke være negativt")
+        return v
 
 
 class MatchLevel(str, Enum):

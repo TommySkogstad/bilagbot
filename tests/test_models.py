@@ -46,6 +46,28 @@ class TestInvoiceData:
         assert restored.total_amount == invoice.total_amount
 
 
+class TestInvoiceDataValidation:
+    def test_negative_total_amount_raises(self):
+        import pytest
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError):
+            InvoiceData(total_amount=-100.0)
+
+    def test_negative_vat_amount_raises(self):
+        import pytest
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError):
+            InvoiceData(vat_amount=-10.0)
+
+    def test_zero_total_amount_ok(self):
+        invoice = InvoiceData(total_amount=0.0)
+        assert invoice.total_amount == 0.0
+
+    def test_none_amounts_ok(self):
+        invoice = InvoiceData(total_amount=None, vat_amount=None)
+        assert invoice.total_amount is None
+
+
 class TestEnums:
     def test_match_levels(self):
         assert MatchLevel.UNKNOWN.value == "UNKNOWN"
