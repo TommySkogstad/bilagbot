@@ -6,8 +6,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
-from bilagbot.cli import main
-from bilagbot.database import get_connection, insert_scan
+from bilagbot.cli import _post_single_invoice, main
+from bilagbot.database import get_connection, get_scan, insert_scan, update_scan_status
+from bilagbot.exceptions import FikenError
 
 
 @pytest.fixture
@@ -156,6 +157,36 @@ class TestFikenPostCommand:
         with patch("bilagbot.cli.get_connection", return_value=conn):
             result = runner.invoke(main, ["fiken", "post-pending"])
         assert "fakturadato" in result.output.lower()
+
+
+class TestPostSingleInvoice:
+    def _setup_approved_scan(self, tmp_path):
+        db_path = tmp_path / "test.db"
+        conn = get_connection(db_path=db_path)
+        scan_id = insert_scan(
+            conn, file_path="/tmp/test.pdf", file_hash="abc",
+            supplier_org_number="988312495", supplier_name="Telenor",
+            total_amount=599.0, vat_amount=119.8, currency="NOK",
+            invoice_date="2025-01-15", due_date="2025-02-15",
+            invoice_number="INV-001", match_level="KNOWN",
+            account_code="6900", vat_code="1", raw_claude_json="{}",
+        )
+        update_scan_status(conn, scan_id, "APPROVED")
+        return conn, scan_id
+
+    def test_fiken_error_sets_failed_status_and_reraises(self, tmp_path):
+        """_post_single_invoice setter status FAILED og re-raiser ved FikenError."""
+        conn, scan_id = self._setup_approved_scan(tmp_path)
+        row = dict(get_scan(conn, scan_id))
+
+        mock_client = MagicMock()
+        mock_client.post_invoice.side_effect = FikenError("Nettverksfeil")
+
+        with pytest.raises(FikenError):
+            _post_single_invoice(row, conn, mock_client)
+
+        updated = get_scan(conn, scan_id)
+        assert updated["status"] == "FAILED"
 
 
 class TestSuppliersCommand:

@@ -27,6 +27,30 @@ from bilagbot.scanner import file_hash, scan_file
 SCAN_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp"}
 
 
+def _post_single_invoice(row: dict, conn, client) -> int:
+    """Poster ett enkelt bilag til Fiken. Setter status FAILED og kaster FikenError ved feil."""
+    file_path = Path(row["file_path"]) if row["file_path"] else None
+    try:
+        purchase_id = client.post_invoice(
+            vendor_name=row["supplier_name"] or "Ukjent leverandør",
+            vendor_org_number=row["supplier_org_number"],
+            invoice_date=row["invoice_date"],
+            due_date=row["due_date"],
+            invoice_number=row["invoice_number"],
+            payment_reference=None,
+            total_amount=row["total_amount"] or 0,
+            account_code=row["account_code"],
+            vat_code=row["vat_code"],
+            description=row["supplier_name"] or "Kjøp",
+            file_path=file_path,
+        )
+        update_scan_fiken(conn, row["id"], purchase_id)
+        return purchase_id
+    except FikenError:
+        update_scan_status(conn, row["id"], "FAILED")
+        raise
+
+
 @click.group()
 @click.version_option(package_name="bilagbot")
 def main():
@@ -337,27 +361,10 @@ def fiken_post(scan_id: int):
 
     try:
         client = FikenClient()
-        file_path = Path(row["file_path"]) if row["file_path"] else None
-
-        purchase_id = client.post_invoice(
-            vendor_name=row["supplier_name"] or "Ukjent leverandør",
-            vendor_org_number=row["supplier_org_number"],
-            invoice_date=row["invoice_date"],
-            due_date=row["due_date"],
-            invoice_number=row["invoice_number"],
-            payment_reference=None,
-            total_amount=row["total_amount"] or 0,
-            account_code=row["account_code"],
-            vat_code=row["vat_code"],
-            description=row["supplier_name"] or "Kjøp",
-            file_path=file_path,
-        )
-
-        update_scan_fiken(conn, scan_id, purchase_id)
+        purchase_id = _post_single_invoice(row, conn, client)
         console.print(f"[green]✓ Bilag #{scan_id} bokført til Fiken (kjøp #{purchase_id})[/green]")
         client.close()
     except FikenError as e:
-        update_scan_status(conn, scan_id, "FAILED")
         console.print(f"[red]✗ Fiken-feil: {e}[/red]")
     finally:
         conn.close()
@@ -401,25 +408,10 @@ def fiken_post_pending():
 
         for row in postable:
             try:
-                file_path = Path(row["file_path"]) if row["file_path"] else None
-                purchase_id = client.post_invoice(
-                    vendor_name=row["supplier_name"] or "Ukjent leverandør",
-                    vendor_org_number=row["supplier_org_number"],
-                    invoice_date=row["invoice_date"],
-                    due_date=row["due_date"],
-                    invoice_number=row["invoice_number"],
-                    payment_reference=None,
-                    total_amount=row["total_amount"] or 0,
-                    account_code=row["account_code"],
-                    vat_code=row["vat_code"],
-                    description=row["supplier_name"] or "Kjøp",
-                    file_path=file_path,
-                )
-                update_scan_fiken(conn, row["id"], purchase_id)
+                purchase_id = _post_single_invoice(row, conn, client)
                 console.print(f"  [green]✓[/green] #{row['id']} → kjøp #{purchase_id}")
                 success += 1
             except FikenError as e:
-                update_scan_status(conn, row["id"], "FAILED")
                 console.print(f"  [red]✗[/red] #{row['id']}: {e}")
                 failed += 1
 
