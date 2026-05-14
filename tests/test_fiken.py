@@ -171,10 +171,16 @@ class TestContacts:
         contact_id = client.get_or_create_contact("Ny AS", "111222333")
         assert contact_id == 55
 
-    def test_create_contact_invalid_location_raises_fiken_error(self, client, mock_http):
+    @pytest.mark.parametrize("location", [
+        "/api/v2/companies/foo/contacts/bar-not-int",
+        "",
+        "/",
+        "https://api.fiken.no/api/v2/companies/foo/contacts/",
+    ])
+    def test_create_contact_invalid_location_raises_fiken_error(self, client, mock_http, location):
         mock_http.request.return_value = _mock_response(
             201,
-            headers={"Location": "/api/v2/companies/foo/contacts/bar-not-int"},
+            headers={"Location": location},
         )
         with pytest.raises(FikenError, match="Uventet Location-header"):
             client.create_contact("Ny Leverandør")
@@ -226,10 +232,16 @@ class TestCreatePurchase:
         with pytest.raises(FikenValidationError, match="Valideringsfeil"):
             client.create_purchase(date="", account_code="6900", gross_amount=100)
 
-    def test_invalid_location_header_raises_fiken_error(self, client, mock_http):
+    @pytest.mark.parametrize("location", [
+        "/api/v2/companies/foo/purchases/bar-not-int",
+        "",
+        "/",
+        "https://api.fiken.no/api/v2/companies/foo/purchases/",
+    ])
+    def test_invalid_location_header_raises_fiken_error(self, client, mock_http, location):
         mock_http.request.return_value = _mock_response(
             201,
-            headers={"Location": "/api/v2/companies/foo/purchases/bar-not-int"},
+            headers={"Location": location},
         )
         with pytest.raises(FikenError, match="Uventet Location-header"):
             client.create_purchase(date="2026-03-15", account_code="6900", gross_amount=100)
