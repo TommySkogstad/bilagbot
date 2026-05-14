@@ -186,6 +186,65 @@ class TestUpload:
         assert res.status_code == 400
 
 
+class TestSanitizeFilename:
+    """Tester for _safe_filename()-hjelperfunksjon."""
+
+    def test_strips_relative_path_traversal(self):
+        from bilagbot.web import _safe_filename
+        result = _safe_filename("../../etc/passwd.pdf")
+        assert ".." not in result
+        assert "/" not in result
+        assert result.endswith(".pdf")
+
+    def test_strips_absolute_posix_path(self):
+        from bilagbot.web import _safe_filename
+        result = _safe_filename("/etc/passwd.pdf")
+        assert result == "passwd.pdf"
+
+    def test_strips_windows_backslash_traversal(self):
+        from bilagbot.web import _safe_filename
+        result = _safe_filename("..\\..\\windows\\evil.pdf")
+        assert ".." not in result
+        assert "\\" not in result
+
+    def test_none_returns_nonempty(self):
+        from bilagbot.web import _safe_filename
+        result = _safe_filename(None)
+        assert result and len(result) > 0
+
+    def test_empty_string_returns_nonempty(self):
+        from bilagbot.web import _safe_filename
+        result = _safe_filename("")
+        assert result and len(result) > 0
+
+    def test_dotdot_only_returns_nonempty(self):
+        from bilagbot.web import _safe_filename
+        result = _safe_filename("..")
+        assert result and ".." not in result
+
+    def test_special_chars_replaced(self):
+        from bilagbot.web import _safe_filename
+        result = _safe_filename("faktura!@#$%.pdf")
+        for ch in "!@#$%":
+            assert ch not in result
+        assert result.endswith(".pdf")
+
+    def test_normal_filename_unchanged(self):
+        from bilagbot.web import _safe_filename
+        assert _safe_filename("faktura-2025-01.pdf") == "faktura-2025-01.pdf"
+
+    def test_null_byte_stripped(self):
+        from bilagbot.web import _safe_filename
+        result = _safe_filename("safe.pdf\x00../../etc/passwd")
+        assert "\x00" not in result
+        assert ".." not in result
+
+    def test_length_capped(self):
+        from bilagbot.web import _safe_filename
+        result = _safe_filename("a" * 5000 + ".pdf")
+        assert len(result) <= 200
+
+
 class TestScanAsync:
     def test_scan_delegates_to_asyncio_thread(self, client, tmp_path):
         """api_scan bruker asyncio.to_thread() for scan_file() for ikke å blokkere event loop."""
