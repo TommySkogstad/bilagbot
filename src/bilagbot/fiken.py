@@ -174,7 +174,10 @@ class FikenClient:
         if response.status_code == 201:
             location = response.headers.get("Location", "")
             # Location: https://api.fiken.no/api/v2/companies/{slug}/contacts/{id}
-            contact_id = int(location.rstrip("/").split("/")[-1])
+            try:
+                contact_id = int(location.rstrip("/").split("/")[-1])
+            except ValueError:
+                raise FikenError(f"Uventet Location-header fra Fiken: {location}")
             logger.info("Opprettet kontakt %s (ID: %d)", name, contact_id)
             return contact_id
 
@@ -249,7 +252,10 @@ class FikenClient:
 
         if response.status_code == 201:
             location = response.headers.get("Location", "")
-            purchase_id = int(location.rstrip("/").split("/")[-1])
+            try:
+                purchase_id = int(location.rstrip("/").split("/")[-1])
+            except ValueError:
+                raise FikenError(f"Uventet Location-header fra Fiken: {location}")
             logger.info("Opprettet kjøp #%d (beløp: %d øre)", purchase_id, gross_amount)
             return purchase_id
 
