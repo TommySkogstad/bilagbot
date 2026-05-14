@@ -2,7 +2,9 @@
 
 import asyncio
 import logging
+import re
 import shutil
+import unicodedata
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -31,6 +33,19 @@ from bilagbot.scanner import file_hash, scan_file
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="BilagBot", version="0.2.0")
+
+_SAFE_NAME_RE = re.compile(r"[^\w.\-]")
+
+
+def _safe_filename(raw: str | None) -> str:
+    """Returner et trygt filnavn uten path-komponenter eller farlige tegn."""
+    if not raw:
+        return "ukjent"
+    name = unicodedata.normalize("NFKC", raw).replace("\x00", "")
+    name = name.replace("\\", "/").split("/")[-1]
+    name = name.lstrip(".") or "ukjent"
+    name = _SAFE_NAME_RE.sub("_", name)
+    return name[:200] or "ukjent"
 
 UPLOAD_DIR = DATA_DIR / "uploads"
 
@@ -89,18 +104,26 @@ async def api_scan(file: UploadFile = File(...)):
     ensure_data_dir()
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Valider filtype
-    suffix = Path(file.filename or "unknown").suffix.lower()
+    # Valider og sanitér filnavn
+    safe_name = _safe_filename(file.filename)
+    suffix = Path(safe_name).suffix.lower()
     allowed = {".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp"}
     if suffix not in allowed:
         raise HTTPException(400, f"Filtypen {suffix} stottes ikke. Bruk PDF, JPEG, PNG, GIF eller WebP.")
 
-    # Lagre fil
-    dest = UPLOAD_DIR / (file.filename or "unknown")
+    # Lagre fil — med containment-sjekk mot UPLOAD_DIR
+    upload_root = UPLOAD_DIR.resolve()
+    dest = (upload_root / safe_name).resolve()
+    try:
+        dest.relative_to(upload_root)
+    except ValueError:
+        raise HTTPException(400, "Ugyldig filnavn.")
+
     # Unngaa overskriving
     counter = 1
+    stem, ext = Path(safe_name).stem, suffix
     while dest.exists():
-        dest = UPLOAD_DIR / f"{dest.stem}_{counter}{dest.suffix}"
+        dest = (upload_root / f"{stem}_{counter}{ext}").resolve()
         counter += 1
 
     with open(dest, "wb") as f:
@@ -242,11 +265,15 @@ async def api_delete(scan_id: int):
         if not row:
             raise HTTPException(404, f"Bilag #{scan_id} finnes ikke")
 
-        # Slett opplastet fil
+        # Slett opplastet fil — verifiser at stien er innenfor UPLOAD_DIR
         if row["file_path"]:
-            p = Path(row["file_path"])
-            if p.exists():
-                p.unlink()
+            p = Path(row["file_path"]).resolve()
+            try:
+                p.relative_to(UPLOAD_DIR.resolve())
+                if p.exists():
+                    p.unlink()
+            except ValueError:
+                logger.warning("api_delete: file_path utenfor UPLOAD_DIR, hopper over: %s", p)
 
         conn.execute("DELETE FROM scan_log WHERE id = ?", (scan_id,))
         conn.commit()
