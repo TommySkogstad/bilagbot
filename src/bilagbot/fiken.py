@@ -7,7 +7,14 @@ from pathlib import Path
 
 import httpx
 
-from bilagbot.config import FIKEN_API_TOKEN, FIKEN_BASE_URL, FIKEN_COMPANY_SLUG
+from bilagbot.config import (
+    FIKEN_API_TOKEN,
+    FIKEN_BASE_URL,
+    FIKEN_COMPANY_SLUG,
+    FIKEN_HTTP_TIMEOUT,
+    FIKEN_MAX_RETRIES,
+    FIKEN_RETRY_BACKOFF,
+)
 from bilagbot.exceptions import (
     FikenAuthError,
     FikenError,
@@ -51,9 +58,6 @@ def amount_to_cents(amount: float | None) -> int:
 class FikenClient:
     """Klient for Fiken API v2."""
 
-    MAX_RETRIES = 3
-    RETRY_BACKOFF = 2  # sekunder, dobles per forsøk
-
     def __init__(
         self,
         api_token: str | None = None,
@@ -75,7 +79,7 @@ class FikenClient:
                 "Authorization": f"Bearer {self.api_token}",
                 "Accept": "application/json",
             },
-            timeout=30.0,
+            timeout=FIKEN_HTTP_TIMEOUT,
         )
 
     def close(self) -> None:
@@ -92,25 +96,25 @@ class FikenClient:
         kwargs["headers"]["X-Request-ID"] = str(uuid.uuid4())
 
         last_error = None
-        for attempt in range(1, self.MAX_RETRIES + 1):
+        for attempt in range(1, FIKEN_MAX_RETRIES + 1):
             try:
                 response = self._http.request(method, url, **kwargs)
             except httpx.HTTPError as e:
                 last_error = FikenError(f"Nettverksfeil: {e}")
-                if attempt < self.MAX_RETRIES:
-                    time.sleep(self.RETRY_BACKOFF ** attempt)
+                if attempt < FIKEN_MAX_RETRIES:
+                    time.sleep(FIKEN_RETRY_BACKOFF ** attempt)
                 continue
 
             if response.status_code == 429:
                 last_error = FikenRateLimitError("For mange forespørsler")
-                if attempt < self.MAX_RETRIES:
-                    time.sleep(self.RETRY_BACKOFF ** attempt)
+                if attempt < FIKEN_MAX_RETRIES:
+                    time.sleep(FIKEN_RETRY_BACKOFF ** attempt)
                 continue
 
             if response.status_code in (500, 502, 503, 504):
                 last_error = FikenError(f"Serverfeil: {response.status_code}")
-                if attempt < self.MAX_RETRIES:
-                    time.sleep(self.RETRY_BACKOFF ** attempt)
+                if attempt < FIKEN_MAX_RETRIES:
+                    time.sleep(FIKEN_RETRY_BACKOFF ** attempt)
                 continue
 
             # Ikke-retrybare feil
@@ -126,7 +130,7 @@ class FikenClient:
 
             return response
 
-        raise last_error or FikenError("Ukjent feil etter retry")
+        raise last_error or FikenError(f"Ukjent feil etter {FIKEN_MAX_RETRIES} forsøk")
 
     # --- Validering ---
 
