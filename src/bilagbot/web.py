@@ -5,7 +5,9 @@ import logging
 import re
 import secrets
 import shutil
+import sqlite3
 import unicodedata
+from collections.abc import Iterator
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
@@ -74,6 +76,15 @@ def require_auth(
         raise unauthorized
 
 
+def get_db() -> Iterator[sqlite3.Connection]:
+    """FastAPI dependency: yield én DB-tilkobling per request og lukk den etterpå."""
+    conn = get_connection()
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
 _SAFE_NAME_RE = re.compile(r"[^\w.\-]")
 
 
@@ -139,7 +150,7 @@ async def health():
 
 
 @app.post("/api/scan", dependencies=[Depends(require_auth)])
-async def api_scan(file: UploadFile = File(...)):
+async def api_scan(file: UploadFile = File(...), conn: sqlite3.Connection = Depends(get_db)):
     """Last opp og scan et bilag."""
     ensure_data_dir()
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -169,199 +180,171 @@ async def api_scan(file: UploadFile = File(...)):
     with open(dest, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
-    conn = get_connection()
+    # Duplikatsjekk
+    fhash = file_hash(dest)
+    dup = find_duplicate(conn, fhash)
+    if dup:
+        dest.unlink()
+        return {"duplicate": True, "existing_id": dup["id"]}
+
+    # Scan med Claude CLI
     try:
-        # Duplikatsjekk
-        fhash = file_hash(dest)
-        dup = find_duplicate(conn, fhash)
-        if dup:
-            dest.unlink()
-            return {"duplicate": True, "existing_id": dup["id"]}
+        invoice, raw_json = await asyncio.to_thread(scan_file, dest)
+    except ScannerError as e:
+        dest.unlink()
+        raise HTTPException(500, f"Scanfeil: {e}")
 
-        # Scan med Claude CLI
-        try:
-            invoice, raw_json = await asyncio.to_thread(scan_file, dest)
-        except ScannerError as e:
-            dest.unlink()
-            raise HTTPException(500, f"Scanfeil: {e}")
+    # Klassifiser
+    result = classify(conn, invoice)
 
-        # Klassifiser
-        result = classify(conn, invoice)
+    # Lagre
+    scan_id = insert_scan(
+        conn,
+        file_path=str(dest.resolve()),
+        file_hash=fhash,
+        supplier_org_number=invoice.vendor_org_number,
+        supplier_name=result.supplier_name or invoice.vendor_name,
+        total_amount=invoice.total_amount,
+        vat_amount=invoice.vat_amount,
+        currency=invoice.currency,
+        invoice_date=invoice.invoice_date,
+        due_date=invoice.due_date,
+        invoice_number=invoice.invoice_number,
+        match_level=result.match_level.value,
+        account_code=result.account_code,
+        vat_code=result.vat_code,
+        raw_claude_json=raw_json,
+    )
 
-        # Lagre
-        scan_id = insert_scan(
-            conn,
-            file_path=str(dest.resolve()),
-            file_hash=fhash,
-            supplier_org_number=invoice.vendor_org_number,
-            supplier_name=result.supplier_name or invoice.vendor_name,
-            total_amount=invoice.total_amount,
-            vat_amount=invoice.vat_amount,
-            currency=invoice.currency,
-            invoice_date=invoice.invoice_date,
-            due_date=invoice.due_date,
-            invoice_number=invoice.invoice_number,
-            match_level=result.match_level.value,
-            account_code=result.account_code,
-            vat_code=result.vat_code,
-            raw_claude_json=raw_json,
-        )
-
-        row = get_scan(conn, scan_id)
-        return {"duplicate": False, "scan": _row_to_dict(row)}
-    finally:
-        conn.close()
+    row = get_scan(conn, scan_id)
+    return {"duplicate": False, "scan": _row_to_dict(row)}
 
 
 @app.get("/api/scans", dependencies=[Depends(require_auth)])
-async def api_scans(status: str | None = None):
+async def api_scans(status: str | None = None, conn: sqlite3.Connection = Depends(get_db)):
     """Hent alle bilag, eventuelt filtrert pa status."""
-    conn = get_connection()
-    try:
-        if status:
-            rows = get_scans_by_status(conn, status.upper())
-        else:
-            rows = get_all_scans(conn)
-        return [_row_to_dict(r) for r in rows]
-    finally:
-        conn.close()
+    if status:
+        rows = get_scans_by_status(conn, status.upper())
+    else:
+        rows = get_all_scans(conn)
+    return [_row_to_dict(r) for r in rows]
 
 
 @app.get("/api/scans/{scan_id}", dependencies=[Depends(require_auth)])
-async def api_scan_detail(scan_id: int):
+async def api_scan_detail(scan_id: int, conn: sqlite3.Connection = Depends(get_db)):
     """Hent detaljer for ett bilag."""
-    conn = get_connection()
-    try:
-        row = get_scan(conn, scan_id)
-        if not row:
-            raise HTTPException(404, f"Bilag #{scan_id} finnes ikke")
-        return _row_to_dict(row)
-    finally:
-        conn.close()
+    row = get_scan(conn, scan_id)
+    if not row:
+        raise HTTPException(404, f"Bilag #{scan_id} finnes ikke")
+    return _row_to_dict(row)
 
 
 @app.post("/api/scans/{scan_id}/approve", dependencies=[Depends(require_auth)])
-async def api_approve(scan_id: int, body: ApproveRequest | None = None):
+async def api_approve(scan_id: int, body: ApproveRequest | None = None, conn: sqlite3.Connection = Depends(get_db)):
     """Godkjenn et bilag og lar leverandoren."""
-    conn = get_connection()
-    try:
-        row = get_scan(conn, scan_id)
-        if not row:
-            raise HTTPException(404, f"Bilag #{scan_id} finnes ikke")
-        if row["status"] != "PENDING":
-            raise HTTPException(400, f"Bilag #{scan_id} har status {row['status']}")
+    row = get_scan(conn, scan_id)
+    if not row:
+        raise HTTPException(404, f"Bilag #{scan_id} finnes ikke")
+    if row["status"] != "PENDING":
+        raise HTTPException(400, f"Bilag #{scan_id} har status {row['status']}")
 
-        body = body or ApproveRequest()
-        final_account = body.account_code or row["account_code"]
-        final_vat = body.vat_code or row["vat_code"]
+    body = body or ApproveRequest()
+    final_account = body.account_code or row["account_code"]
+    final_vat = body.vat_code or row["vat_code"]
 
-        if body.account_code or body.vat_code:
-            update_scan_classification(conn, scan_id, match_level=row["match_level"],
-                                       account_code=final_account, vat_code=final_vat)
+    if body.account_code or body.vat_code:
+        update_scan_classification(conn, scan_id, match_level=row["match_level"],
+                                   account_code=final_account, vat_code=final_vat)
 
-        update_scan_status(conn, scan_id, "APPROVED")
+    update_scan_status(conn, scan_id, "APPROVED")
 
-        invoice = InvoiceData(vendor_name=row["supplier_name"],
-                              vendor_org_number=row["supplier_org_number"])
-        learn_from_approval(conn, invoice, account_code=final_account, vat_code=final_vat)
+    invoice = InvoiceData(vendor_name=row["supplier_name"],
+                          vendor_org_number=row["supplier_org_number"])
+    learn_from_approval(conn, invoice, account_code=final_account, vat_code=final_vat)
 
-        updated = get_scan(conn, scan_id)
-        result = _row_to_dict(updated)
+    updated = get_scan(conn, scan_id)
+    result = _row_to_dict(updated)
 
-        # Sjekk auto-approve status
-        if row["supplier_org_number"]:
-            supplier = get_supplier(conn, row["supplier_org_number"])
-            if supplier and supplier["auto_approve"]:
-                result["auto_approved"] = True
+    # Sjekk auto-approve status
+    if row["supplier_org_number"]:
+        supplier = get_supplier(conn, row["supplier_org_number"])
+        if supplier and supplier["auto_approve"]:
+            result["auto_approved"] = True
 
-        return result
-    finally:
-        conn.close()
+    return result
 
 
 @app.post("/api/scans/{scan_id}/reject", dependencies=[Depends(require_auth)])
-async def api_reject(scan_id: int):
+async def api_reject(scan_id: int, conn: sqlite3.Connection = Depends(get_db)):
     """Avvis et bilag."""
-    conn = get_connection()
-    try:
-        row = get_scan(conn, scan_id)
-        if not row:
-            raise HTTPException(404, f"Bilag #{scan_id} finnes ikke")
-        if row["status"] != "PENDING":
-            raise HTTPException(400, f"Bilag #{scan_id} har status {row['status']}")
+    row = get_scan(conn, scan_id)
+    if not row:
+        raise HTTPException(404, f"Bilag #{scan_id} finnes ikke")
+    if row["status"] != "PENDING":
+        raise HTTPException(400, f"Bilag #{scan_id} har status {row['status']}")
 
-        update_scan_status(conn, scan_id, "REJECTED")
-        return _row_to_dict(get_scan(conn, scan_id))
-    finally:
-        conn.close()
+    update_scan_status(conn, scan_id, "REJECTED")
+    return _row_to_dict(get_scan(conn, scan_id))
 
 
 @app.delete("/api/scans/{scan_id}", dependencies=[Depends(require_auth)])
-async def api_delete(scan_id: int):
+async def api_delete(scan_id: int, conn: sqlite3.Connection = Depends(get_db)):
     """Slett et bilag permanent."""
-    conn = get_connection()
-    try:
-        row = get_scan(conn, scan_id)
-        if not row:
-            raise HTTPException(404, f"Bilag #{scan_id} finnes ikke")
+    row = get_scan(conn, scan_id)
+    if not row:
+        raise HTTPException(404, f"Bilag #{scan_id} finnes ikke")
 
-        # Slett opplastet fil — verifiser at stien er innenfor UPLOAD_DIR
-        if row["file_path"]:
-            p = Path(row["file_path"]).resolve()
-            try:
-                p.relative_to(UPLOAD_DIR.resolve())
-                if p.exists():
-                    p.unlink()
-            except ValueError:
-                logger.warning("api_delete: file_path utenfor UPLOAD_DIR, hopper over: %s", p)
+    # Slett opplastet fil — verifiser at stien er innenfor UPLOAD_DIR
+    if row["file_path"]:
+        p = Path(row["file_path"]).resolve()
+        try:
+            p.relative_to(UPLOAD_DIR.resolve())
+            if p.exists():
+                p.unlink()
+        except ValueError:
+            logger.warning("api_delete: file_path utenfor UPLOAD_DIR, hopper over: %s", p)
 
-        conn.execute("DELETE FROM scan_log WHERE id = ?", (scan_id,))
-        conn.commit()
-        return {"deleted": scan_id}
-    finally:
-        conn.close()
+    conn.execute("DELETE FROM scan_log WHERE id = ?", (scan_id,))
+    conn.commit()
+    return {"deleted": scan_id}
 
 
 @app.post("/api/scans/{scan_id}/fiken", dependencies=[Depends(require_auth)])
-async def api_fiken_post(scan_id: int):
+async def api_fiken_post(scan_id: int, conn: sqlite3.Connection = Depends(get_db)):
     """Bokfor et godkjent bilag til Fiken."""
-    conn = get_connection()
+    row = get_scan(conn, scan_id)
+    if not row:
+        raise HTTPException(404, f"Bilag #{scan_id} finnes ikke")
+    if row["status"] != "APPROVED":
+        raise HTTPException(400, f"Bilag #{scan_id} har status {row['status']} — kun APPROVED kan bokfores")
+    if not row["account_code"]:
+        raise HTTPException(400, f"Bilag #{scan_id} mangler kontokode")
+    if not row["invoice_date"]:
+        raise HTTPException(400, f"Bilag #{scan_id} mangler fakturadato — legg inn dato før bokføring")
+
+    from bilagbot.fiken import FikenClient
+
     try:
-        row = get_scan(conn, scan_id)
-        if not row:
-            raise HTTPException(404, f"Bilag #{scan_id} finnes ikke")
-        if row["status"] != "APPROVED":
-            raise HTTPException(400, f"Bilag #{scan_id} har status {row['status']} — kun APPROVED kan bokfores")
-        if not row["account_code"]:
-            raise HTTPException(400, f"Bilag #{scan_id} mangler kontokode")
-        if not row["invoice_date"]:
-            raise HTTPException(400, f"Bilag #{scan_id} mangler fakturadato — legg inn dato før bokføring")
+        client = FikenClient()
+        file_path = Path(row["file_path"]) if row["file_path"] else None
 
-        from bilagbot.fiken import FikenClient
+        purchase_id = client.post_invoice(
+            vendor_name=row["supplier_name"] or "Ukjent leverandor",
+            vendor_org_number=row["supplier_org_number"],
+            invoice_date=row["invoice_date"],
+            due_date=row["due_date"],
+            invoice_number=row["invoice_number"],
+            payment_reference=None,
+            total_amount=row["total_amount"] or 0,
+            account_code=row["account_code"],
+            vat_code=row["vat_code"],
+            description=row["supplier_name"] or "Kjop",
+            file_path=file_path,
+        )
 
-        try:
-            client = FikenClient()
-            file_path = Path(row["file_path"]) if row["file_path"] else None
-
-            purchase_id = client.post_invoice(
-                vendor_name=row["supplier_name"] or "Ukjent leverandor",
-                vendor_org_number=row["supplier_org_number"],
-                invoice_date=row["invoice_date"],
-                due_date=row["due_date"],
-                invoice_number=row["invoice_number"],
-                payment_reference=None,
-                total_amount=row["total_amount"] or 0,
-                account_code=row["account_code"],
-                vat_code=row["vat_code"],
-                description=row["supplier_name"] or "Kjop",
-                file_path=file_path,
-            )
-
-            update_scan_fiken(conn, scan_id, purchase_id)
-            client.close()
-            return {"purchase_id": purchase_id, "scan": _row_to_dict(get_scan(conn, scan_id))}
-        except FikenError as e:
-            update_scan_status(conn, scan_id, "FAILED")
-            raise HTTPException(500, f"Fiken-feil: {e}")
-    finally:
-        conn.close()
+        update_scan_fiken(conn, scan_id, purchase_id)
+        client.close()
+        return {"purchase_id": purchase_id, "scan": _row_to_dict(get_scan(conn, scan_id))}
+    except FikenError as e:
+        update_scan_status(conn, scan_id, "FAILED")
+        raise HTTPException(500, f"Fiken-feil: {e}")

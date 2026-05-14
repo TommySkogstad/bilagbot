@@ -392,6 +392,60 @@ class TestUploadSecurity:
         assert uploaded[0].name == "passwd.pdf"
 
 
+class TestGetDbDependency:
+    """Tester for get_db() FastAPI-dependency."""
+
+    def test_get_db_yields_connection(self, tmp_path):
+        """get_db() skal yielde en åpen sqlite3.Connection."""
+        db_path = tmp_path / "dep_test.db"
+        _make_conn(db_path).close()
+        with patch("bilagbot.web.get_connection", side_effect=lambda: _make_conn(db_path)):
+            from bilagbot.web import get_db
+            gen = get_db()
+            conn = next(gen)
+            assert isinstance(conn, sqlite3.Connection)
+            try:
+                next(gen)
+            except StopIteration:
+                pass
+
+    def test_get_db_closes_connection_after_request(self, tmp_path):
+        """get_db() skal lukke tilkoblingen etter at generatoren er uttømt."""
+        from unittest.mock import MagicMock
+        mock_conn = MagicMock(spec=sqlite3.Connection)
+        with patch("bilagbot.web.get_connection", return_value=mock_conn):
+            from bilagbot.web import get_db
+            gen = get_db()
+            next(gen)
+            mock_conn.close.assert_not_called()
+            try:
+                next(gen)
+            except StopIteration:
+                pass
+            mock_conn.close.assert_called_once()
+
+    def test_get_db_closes_connection_on_exception(self, tmp_path):
+        """get_db() skal lukke tilkoblingen selv om et unntak kastes inne i endepunktet."""
+        from unittest.mock import MagicMock
+        mock_conn = MagicMock(spec=sqlite3.Connection)
+        with patch("bilagbot.web.get_connection", return_value=mock_conn):
+            from bilagbot.web import get_db
+            gen = get_db()
+            next(gen)
+            try:
+                gen.throw(RuntimeError("simulated error"))
+            except RuntimeError:
+                pass
+            mock_conn.close.assert_called_once()
+
+    def test_endpoints_use_get_db_via_depends(self, client_with_scan):
+        """Alle endepunkter skal fungere via get_db dependency (regresjonstest)."""
+        assert client_with_scan.get("/api/scans").status_code == 200
+        assert client_with_scan.get("/api/scans/1").status_code == 200
+        assert client_with_scan.post("/api/scans/1/approve").status_code == 200
+        assert client_with_scan.get("/api/scans/1").json()["status"] == "APPROVED"
+
+
 class TestScanAsync:
     def test_scan_delegates_to_asyncio_thread(self, client, tmp_path):
         """api_scan bruker asyncio.to_thread() for scan_file() for ikke å blokkere event loop."""
