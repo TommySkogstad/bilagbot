@@ -377,6 +377,41 @@ class TestPostInvoice:
                 description="Test",
             )
 
+    @pytest.mark.parametrize("bad_date", ["01/01/2024", "i morges", "15.01.2025", "2025/01/15", "not-a-date"])
+    def test_invalid_date_format_rejected(self, client, mock_http, bad_date):
+        with pytest.raises(FikenValidationError, match="fakturadato|ugyldig"):
+            client.post_invoice(
+                vendor_name="Test AS",
+                vendor_org_number=None,
+                invoice_date=bad_date,
+                due_date=None,
+                invoice_number=None,
+                payment_reference=None,
+                total_amount=100.00,
+                account_code="6900",
+                vat_code="1",
+                description="Test",
+            )
+
+    def test_valid_date_passes(self, client, mock_http):
+        mock_http.request.side_effect = [
+            _mock_response(200, [{"contactId": 5, "name": "Test AS"}]),
+            _mock_response(201, headers={"Location": ".../purchases/500"}),
+        ]
+        purchase_id = client.post_invoice(
+            vendor_name="Test AS",
+            vendor_org_number="999888777",
+            invoice_date="2025-01-15",
+            due_date=None,
+            invoice_number=None,
+            payment_reference=None,
+            total_amount=100.00,
+            account_code="6900",
+            vat_code="1",
+            description="Test",
+        )
+        assert purchase_id == 500
+
 
 # --- Retry-logikk ---
 
