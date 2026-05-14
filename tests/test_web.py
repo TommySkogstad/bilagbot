@@ -397,7 +397,6 @@ class TestGetDbDependency:
 
     def test_get_db_yields_connection(self, tmp_path):
         """get_db() skal yielde en åpen sqlite3.Connection."""
-        from bilagbot.database import get_connection as real_get_connection
         db_path = tmp_path / "dep_test.db"
         _make_conn(db_path).close()
         with patch("bilagbot.web.get_connection", side_effect=lambda: _make_conn(db_path)):
