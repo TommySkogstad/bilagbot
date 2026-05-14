@@ -38,7 +38,7 @@ uv run bilag fiken post           # Poster godkjente bilag til Fiken
 ## Utvikling
 
 ```bash
-uv run pytest tests/ -v           # Kjør tester (123 tester)
+uv run pytest tests/ -v           # Kjør tester (137 tester)
 uv run ruff check src/ tests/     # Linter
 ```
 
