@@ -10,7 +10,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from bilagbot.config import CLAUDE_MODEL
+from bilagbot.config import CLAUDE_CLI_TIMEOUT, CLAUDE_MODEL
 from bilagbot.exceptions import ScannerError
 from bilagbot.models import InvoiceData
 
@@ -94,10 +94,10 @@ def scan_file(path: Path, *, model: str | None = None) -> tuple[InvoiceData, str
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=120,
+                timeout=CLAUDE_CLI_TIMEOUT,
             )
         except subprocess.TimeoutExpired:
-            raise ScannerError("Claude CLI tidsavbrudd (120s)")
+            raise ScannerError(f"Claude CLI tidsavbrudd ({CLAUDE_CLI_TIMEOUT}s)")
         except OSError as e:
             raise ScannerError(f"Kunne ikke kjore Claude CLI: {e}")
 
