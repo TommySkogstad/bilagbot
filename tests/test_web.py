@@ -329,6 +329,69 @@ class TestAuth:
         assert res.status_code == 200
 
 
+class TestUploadSecurity:
+    """E2E-tester for sikker filhåndtering i upload-endepunktet."""
+
+    def _mock_scan_success(self, tmp_path):
+        """Returnerer kontekstmgr-patch-stack for en vellykket scan."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from bilagbot.models import InvoiceData
+
+        dummy_invoice = InvoiceData(vendor_name="Test AS")
+        dummy_json = '{"vendor_name": "Test AS"}'
+        mock_result = MagicMock()
+        mock_result.match_level.value = "UNKNOWN"
+        mock_result.supplier_name = "Test AS"
+        mock_result.account_code = None
+        mock_result.vat_code = None
+        mock_to_thread = AsyncMock(return_value=(dummy_invoice, dummy_json))
+        return (
+            patch("asyncio.to_thread", mock_to_thread),
+            patch("bilagbot.web.scan_file"),
+            patch("bilagbot.web.ensure_data_dir"),
+            patch("bilagbot.web.file_hash", return_value="uniquehash_traversal"),
+            patch("bilagbot.web.find_duplicate", return_value=None),
+            patch("bilagbot.web.classify", return_value=mock_result),
+            patch("bilagbot.web.insert_scan", return_value=1),
+            patch("bilagbot.web.get_scan", return_value={"id": 1, "status": "PENDING"}),
+            patch("bilagbot.web.UPLOAD_DIR", tmp_path),
+        )
+
+    def test_relative_path_traversal_stays_in_upload_dir(self, client, tmp_path):
+        """Filnavn med '../' skal saniteres og filen skal havne i UPLOAD_DIR."""
+        patches = self._mock_scan_success(tmp_path)
+        with patches[0], patches[1], patches[2], patches[3], patches[4], \
+             patches[5], patches[6], patches[7], patches[8]:
+            res = client.post(
+                "/api/scan",
+                files={"file": ("../../evil.pdf", b"%PDF-1.4", "application/pdf")},
+            )
+        assert res.status_code == 200
+        assert not (tmp_path.parent / "evil.pdf").exists(), \
+            "Filen skal ikke havne utenfor UPLOAD_DIR"
+        uploaded = list(tmp_path.glob("*.pdf"))
+        assert len(uploaded) == 1, "Sanitert fil skal ligge i UPLOAD_DIR"
+        assert ".." not in uploaded[0].name
+
+    def test_absolute_path_filename_stays_in_upload_dir(self, client, tmp_path):
+        """Filnavn med absolutt sti ('/etc/passwd.pdf') skal saniteres til UPLOAD_DIR."""
+        patches = self._mock_scan_success(tmp_path)
+        with patches[0], patches[1], patches[2], patches[3], patches[4], \
+             patches[5], patches[6], patches[7], patches[8]:
+            res = client.post(
+                "/api/scan",
+                files={"file": ("/etc/passwd.pdf", b"%PDF-1.4", "application/pdf")},
+            )
+        assert res.status_code == 200
+        from pathlib import Path
+        assert not Path("/etc/passwd_uploaded.pdf").exists(), \
+            "Filen skal ikke skrives til /etc/"
+        uploaded = list(tmp_path.glob("*.pdf"))
+        assert len(uploaded) == 1, "Sanitert fil skal ligge i UPLOAD_DIR"
+        assert uploaded[0].name == "passwd.pdf"
+
+
 class TestScanAsync:
     def test_scan_delegates_to_asyncio_thread(self, client, tmp_path):
         """api_scan bruker asyncio.to_thread() for scan_file() for ikke å blokkere event loop."""
