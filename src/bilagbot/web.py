@@ -27,6 +27,8 @@ from bilagbot.database import (
     find_duplicate,
     get_all_scans,
     get_connection,
+    get_fiken_account,
+    get_fiken_accounts,
     get_scan,
     get_scans_by_status,
     get_supplier,
@@ -251,6 +253,10 @@ async def api_approve(scan_id: int, body: ApproveRequest | None = None, conn: sq
     body = body or ApproveRequest()
     final_account = body.account_code or row["account_code"]
     final_vat = body.vat_code or row["vat_code"]
+
+    if final_account and get_fiken_accounts(conn):
+        if not get_fiken_account(conn, final_account):
+            raise HTTPException(400, f"Ugyldig kontokode: {final_account} finnes ikke i fiken_accounts")
 
     if body.account_code or body.vat_code:
         update_scan_classification(conn, scan_id, match_level=row["match_level"],

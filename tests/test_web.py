@@ -113,6 +113,31 @@ class TestScans:
         assert res.status_code == 404
 
 
+@pytest.fixture
+def client_with_scan_and_fiken_accounts(tmp_path):
+    db_path = tmp_path / "test.db"
+    conn = _make_conn(db_path)
+    insert_scan(
+        conn, file_path="/tmp/test.pdf", file_hash="abc123",
+        supplier_org_number="988312495", supplier_name="Telenor Norge AS",
+        total_amount=599.0, vat_amount=119.8, currency="NOK",
+        invoice_date="2025-01-15", due_date="2025-02-15",
+        invoice_number="INV-001", match_level="UNKNOWN",
+        account_code="6900", vat_code="1", raw_claude_json="{}",
+    )
+    conn.execute(
+        "INSERT INTO fiken_accounts (code, name, last_synced_at) VALUES ('6900', 'Telefon', '2025-01-01')"
+    )
+    conn.execute(
+        "INSERT INTO fiken_accounts (code, name, last_synced_at) VALUES ('7100', 'IT-kostnader', '2025-01-01')"
+    )
+    conn.commit()
+    conn.close()
+    with patch("bilagbot.web.get_connection", side_effect=lambda: _make_conn(db_path)):
+        with TestClient(app) as c:
+            yield c
+
+
 class TestApproveReject:
     def test_approve(self, client_with_scan):
         res = client_with_scan.post("/api/scans/1/approve")
@@ -138,6 +163,31 @@ class TestApproveReject:
         client_with_scan.post("/api/scans/1/approve")
         res = client_with_scan.post("/api/scans/1/approve")
         assert res.status_code == 400
+
+    def test_approve_invalid_account_code_returns_400_when_fiken_accounts_populated(
+        self, client_with_scan_and_fiken_accounts
+    ):
+        res = client_with_scan_and_fiken_accounts.post(
+            "/api/scans/1/approve", json={"account_code": "9999"}
+        )
+        assert res.status_code == 400
+        assert "kontokode" in res.json()["detail"].lower()
+
+    def test_approve_valid_account_code_ok_when_fiken_accounts_populated(
+        self, client_with_scan_and_fiken_accounts
+    ):
+        res = client_with_scan_and_fiken_accounts.post(
+            "/api/scans/1/approve", json={"account_code": "7100"}
+        )
+        assert res.status_code == 200
+
+    def test_approve_invalid_account_code_allowed_when_fiken_accounts_empty(
+        self, client_with_scan
+    ):
+        res = client_with_scan.post(
+            "/api/scans/1/approve", json={"account_code": "9999"}
+        )
+        assert res.status_code == 200
 
 
 class TestDelete:
