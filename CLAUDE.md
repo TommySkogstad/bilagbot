@@ -39,7 +39,7 @@ static/       — HTML/CSS frontend (brand guide-styling)
 ## Deploy
 
 - **Enkel deploy** (ikke blue-green): `docker compose up -d`
-- Integrert i `misc-scripts/deploy-daily`
+- Automatisk deploy via `misc-scripts` (`issue-triage` og `dependabot-weekly` sin `deploy_changed_apps()`), eventuelt manuelt
 
 ## Automatiske jobber
 
@@ -47,7 +47,6 @@ Inkludert i folgende misc-scripts-jobber:
 
 - `issue-triage`
 - `ci-fix-daily`
-- `deploy-daily`
 - `dependabot-weekly`
 - `security-weekly`
 - `docs-review-weekly`
