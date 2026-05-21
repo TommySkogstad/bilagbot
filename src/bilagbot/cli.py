@@ -20,7 +20,7 @@ from bilagbot.database import (
     update_supplier_fields,
 )
 from bilagbot.exceptions import FikenError, ScannerError
-from bilagbot.models import InvoiceData, MatchLevel
+from bilagbot.models import InvoiceData, MatchLevel, ScanStatus
 from bilagbot.review import console, show_pending_list, show_scan_detail, show_status_summary, show_suppliers
 from bilagbot.scanner import file_hash, scan_file
 
@@ -47,7 +47,7 @@ def _post_single_invoice(row: dict, conn, client) -> int:
         update_scan_fiken(conn, row["id"], purchase_id)
         return purchase_id
     except FikenError:
-        update_scan_status(conn, row["id"], "FAILED")
+        update_scan_status(conn, row["id"], ScanStatus.FAILED.value)
         raise
 
 
@@ -156,7 +156,7 @@ def approve(scan_id: int, account: str | None, vat: str | None):
         conn.close()
         return
 
-    if row["status"] != "PENDING":
+    if row["status"] != ScanStatus.PENDING.value:
         console.print(f"[yellow]Bilag #{scan_id} har status {row['status']}, kan ikke godkjennes[/yellow]")
         conn.close()
         return
@@ -174,7 +174,7 @@ def approve(scan_id: int, account: str | None, vat: str | None):
             vat_code=final_vat,
         )
 
-    update_scan_status(conn, scan_id, "APPROVED")
+    update_scan_status(conn, scan_id, ScanStatus.APPROVED.value)
 
     # Lær leverandøren
     invoice = InvoiceData(
@@ -206,12 +206,12 @@ def reject(scan_id: int):
         conn.close()
         return
 
-    if row["status"] != "PENDING":
+    if row["status"] != ScanStatus.PENDING.value:
         console.print(f"[yellow]Bilag #{scan_id} har status {row['status']}, kan ikke avvises[/yellow]")
         conn.close()
         return
 
-    update_scan_status(conn, scan_id, "REJECTED")
+    update_scan_status(conn, scan_id, ScanStatus.REJECTED.value)
     console.print(f"[red]✗ Bilag #{scan_id} avvist[/red]")
     conn.close()
 
@@ -342,7 +342,7 @@ def fiken_post(scan_id: int):
         conn.close()
         return
 
-    if row["status"] != "APPROVED":
+    if row["status"] != ScanStatus.APPROVED.value:
         console.print(f"[yellow]Bilag #{scan_id} har status {row['status']} — kun APPROVED kan bokføres[/yellow]")
         conn.close()
         return
@@ -374,7 +374,7 @@ def fiken_post(scan_id: int):
 def fiken_post_pending():
     """Bokfør alle godkjente bilag til Fiken."""
     conn = get_connection()
-    approved = get_scans_by_status(conn, "APPROVED")
+    approved = get_scans_by_status(conn, ScanStatus.APPROVED.value)
 
     if not approved:
         console.print("[yellow]Ingen godkjente bilag å bokføre.[/yellow]")

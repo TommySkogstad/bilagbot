@@ -19,6 +19,7 @@ from bilagbot.database import (
     update_supplier_fields,
     upsert_supplier,
 )
+from bilagbot.models import ScanStatus
 
 
 class TestScanLog:
@@ -41,6 +42,38 @@ class TestScanLog:
 
     def test_get_nonexistent(self, db):
         assert get_scan(db, 999) is None
+
+    def test_insert_initializes_with_pending_enum_value(self, db):
+        scan_id = insert_scan(
+            db, file_path="/tmp/enum_test.pdf", file_hash="enum123",
+            supplier_org_number=None, supplier_name=None,
+            total_amount=100.0, vat_amount=20.0, currency="NOK",
+            invoice_date=None, due_date=None, invoice_number=None,
+            match_level="UNKNOWN", account_code=None, vat_code=None,
+            raw_claude_json="{}",
+        )
+        row = get_scan(db, scan_id)
+        assert row["status"] == ScanStatus.PENDING.value
+
+    def test_update_status_with_enum_values(self, db):
+        scan_id = insert_scan(
+            db, file_path="/tmp/enum_status.pdf", file_hash="enum456",
+            supplier_org_number=None, supplier_name=None,
+            total_amount=100.0, vat_amount=20.0, currency="NOK",
+            invoice_date=None, due_date=None, invoice_number=None,
+            match_level="UNKNOWN", account_code=None, vat_code=None,
+            raw_claude_json="{}",
+        )
+        update_scan_status(db, scan_id, ScanStatus.APPROVED.value)
+        row = get_scan(db, scan_id)
+        assert row["status"] == ScanStatus.APPROVED.value
+        assert row["reviewed_at"] is not None
+
+        update_scan_status(db, scan_id, ScanStatus.REJECTED.value)
+        assert get_scan(db, scan_id)["status"] == ScanStatus.REJECTED.value
+
+        update_scan_status(db, scan_id, ScanStatus.FAILED.value)
+        assert get_scan(db, scan_id)["status"] == ScanStatus.FAILED.value
 
     def test_status_update(self, db):
         scan_id = insert_scan(

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from bilagbot.config import DB_PATH, ensure_data_dir
 from bilagbot.exceptions import DatabaseError
+from bilagbot.models import ScanStatus
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS known_suppliers (
@@ -95,10 +96,10 @@ def insert_scan(conn: sqlite3.Connection, *, file_path: str, file_hash: str, sup
             """INSERT INTO scan_log (file_path, file_hash, supplier_org_number, supplier_name,
                total_amount, vat_amount, currency, invoice_date, due_date, invoice_number,
                match_level, account_code, vat_code, status, raw_claude_json, scanned_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (file_path, file_hash, supplier_org_number, supplier_name, total_amount, vat_amount,
              currency, invoice_date, due_date, invoice_number, match_level, account_code,
-             vat_code, raw_claude_json, _now()),
+             vat_code, ScanStatus.PENDING.value, raw_claude_json, _now()),
         )
         conn.commit()
         return cursor.lastrowid  # type: ignore[return-value]
@@ -124,7 +125,12 @@ def get_all_scans(conn: sqlite3.Connection) -> list[sqlite3.Row]:
 def update_scan_status(conn: sqlite3.Connection, scan_id: int, status: str) -> None:
     """Oppdater status for en scan-logg."""
     now = _now()
-    reviewed_col = "reviewed_at" if status in ("APPROVED", "REJECTED") else "posted_at" if status == "POSTED" else None
+    if status in (ScanStatus.APPROVED.value, ScanStatus.REJECTED.value):
+        reviewed_col: str | None = "reviewed_at"
+    elif status == ScanStatus.POSTED.value:
+        reviewed_col = "posted_at"
+    else:
+        reviewed_col = None
     if reviewed_col:
         conn.execute(f"UPDATE scan_log SET status = ?, {reviewed_col} = ? WHERE id = ?", (status, now, scan_id))
     else:
@@ -222,8 +228,8 @@ def update_scan_fiken(conn: sqlite3.Connection, scan_id: int, purchase_id: int) 
     """Lagre Fiken purchase ID og marker som POSTED."""
     now = _now()
     conn.execute(
-        "UPDATE scan_log SET status = 'POSTED', fiken_purchase_id = ?, fiken_posted_at = ?, posted_at = ? WHERE id = ?",
-        (purchase_id, now, now, scan_id),
+        "UPDATE scan_log SET status = ?, fiken_purchase_id = ?, fiken_posted_at = ?, posted_at = ? WHERE id = ?",
+        (ScanStatus.POSTED.value, purchase_id, now, now, scan_id),
     )
     conn.commit()
 
