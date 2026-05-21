@@ -6,6 +6,7 @@ from rich.console import Console
 from rich.table import Table
 
 from bilagbot.database import get_scans_by_status
+from bilagbot.models import ScanStatus
 
 console = Console()
 
@@ -42,7 +43,7 @@ def show_scan_detail(row: sqlite3.Row) -> None:
 
 def show_pending_list(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     """Vis alle ventende bilag og returner listen."""
-    rows = get_scans_by_status(conn, "PENDING")
+    rows = get_scans_by_status(conn, ScanStatus.PENDING.value)
     if not rows:
         console.print("[dim]Ingen ventende bilag.[/dim]")
         return []
@@ -90,8 +91,13 @@ def show_status_summary(conn: sqlite3.Connection) -> None:
     table.add_column("Status", style="bold")
     table.add_column("Antall", justify="right")
 
-    status_styles = {"PENDING": "yellow", "APPROVED": "green", "REJECTED": "red",
-                     "POSTED": "blue", "FAILED": "red bold"}
+    status_styles = {
+        ScanStatus.PENDING.value: "yellow",
+        ScanStatus.APPROVED.value: "green",
+        ScanStatus.REJECTED.value: "red",
+        ScanStatus.POSTED.value: "blue",
+        ScanStatus.FAILED.value: "red bold",
+    }
     for status, count in sorted(counts.items()):
         style = status_styles.get(status, "white")
         table.add_row(f"[{style}]{status}[/{style}]", str(count))
