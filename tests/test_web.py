@@ -264,6 +264,19 @@ class TestUpload:
         res = client.post("/api/scan", files={"file": ("test.docx", b"dummy", "application/octet-stream")})
         assert res.status_code == 400
 
+    def test_oversized_file_returns_413(self, client, tmp_path):
+        """Fil over 50 MB skal returnere HTTP 413."""
+        from bilagbot.web import MAX_UPLOAD_BYTES
+
+        oversized = b"x" * (MAX_UPLOAD_BYTES + 1)
+        with patch("bilagbot.web.ensure_data_dir"), \
+             patch("bilagbot.web.UPLOAD_DIR", tmp_path):
+            res = client.post(
+                "/api/scan",
+                files={"file": ("stor.pdf", oversized, "application/pdf")},
+            )
+        assert res.status_code == 413
+
 
 class TestSanitizeFilename:
     """Tester for _safe_filename()-hjelperfunksjon."""
