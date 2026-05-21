@@ -2,12 +2,13 @@
 
 import sqlite3
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from bilagbot.database import insert_scan
+from bilagbot.exceptions import FikenError
 from bilagbot.web import app
 
 SCHEMA = """
@@ -226,11 +227,9 @@ class TestFikenPost:
 
     def test_fiken_error_still_closes_client(self, client_approved):
         """FikenClient.close() skal kalles selv om post_invoice kaster FikenError."""
-        from unittest.mock import MagicMock, patch as mpatch
-        from bilagbot.exceptions import FikenError
         mock_client = MagicMock()
         mock_client.post_invoice.side_effect = FikenError("timeout")
-        with mpatch("bilagbot.fiken.FikenClient", return_value=mock_client):
+        with patch("bilagbot.fiken.FikenClient", return_value=mock_client):
             res = client_approved.post("/api/scans/1/fiken")
         assert res.status_code == 500
         mock_client.close.assert_called_once()
