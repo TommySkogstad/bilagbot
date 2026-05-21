@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from rich.console import Console
 
-from bilagbot.database import get_connection, get_scan, insert_scan, upsert_supplier
+from bilagbot.database import get_scan, insert_scan, upsert_supplier
 from bilagbot.review import format_amount, show_pending_list, show_scan_detail, show_status_summary, show_suppliers
 
 
