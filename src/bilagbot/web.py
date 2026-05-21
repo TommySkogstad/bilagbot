@@ -37,7 +37,7 @@ from bilagbot.database import (
     update_scan_status,
 )
 from bilagbot.exceptions import FikenError, ScannerError
-from bilagbot.models import InvoiceData
+from bilagbot.models import InvoiceData, ScanStatus
 from bilagbot.scanner import file_hash, scan_file
 
 logger = logging.getLogger(__name__)
@@ -251,7 +251,7 @@ async def api_approve(scan_id: int, body: ApproveRequest | None = None, conn: sq
     row = get_scan(conn, scan_id)
     if not row:
         raise HTTPException(404, f"Bilag #{scan_id} finnes ikke")
-    if row["status"] != "PENDING":
+    if row["status"] != ScanStatus.PENDING.value:
         raise HTTPException(400, f"Bilag #{scan_id} har status {row['status']}")
 
     body = body or ApproveRequest()
@@ -266,7 +266,7 @@ async def api_approve(scan_id: int, body: ApproveRequest | None = None, conn: sq
         update_scan_classification(conn, scan_id, match_level=row["match_level"],
                                    account_code=final_account, vat_code=final_vat)
 
-    update_scan_status(conn, scan_id, "APPROVED")
+    update_scan_status(conn, scan_id, ScanStatus.APPROVED.value)
 
     invoice = InvoiceData(vendor_name=row["supplier_name"],
                           vendor_org_number=row["supplier_org_number"])
@@ -290,10 +290,10 @@ async def api_reject(scan_id: int, conn: sqlite3.Connection = Depends(get_db)):
     row = get_scan(conn, scan_id)
     if not row:
         raise HTTPException(404, f"Bilag #{scan_id} finnes ikke")
-    if row["status"] != "PENDING":
+    if row["status"] != ScanStatus.PENDING.value:
         raise HTTPException(400, f"Bilag #{scan_id} har status {row['status']}")
 
-    update_scan_status(conn, scan_id, "REJECTED")
+    update_scan_status(conn, scan_id, ScanStatus.REJECTED.value)
     return _row_to_dict(get_scan(conn, scan_id))
 
 
@@ -325,7 +325,7 @@ async def api_fiken_post(scan_id: int, conn: sqlite3.Connection = Depends(get_db
     row = get_scan(conn, scan_id)
     if not row:
         raise HTTPException(404, f"Bilag #{scan_id} finnes ikke")
-    if row["status"] != "APPROVED":
+    if row["status"] != ScanStatus.APPROVED.value:
         raise HTTPException(400, f"Bilag #{scan_id} har status {row['status']} — kun APPROVED kan bokfores")
     if not row["account_code"]:
         raise HTTPException(400, f"Bilag #{scan_id} mangler kontokode")
@@ -355,7 +355,7 @@ async def api_fiken_post(scan_id: int, conn: sqlite3.Connection = Depends(get_db
         update_scan_fiken(conn, scan_id, purchase_id)
         return {"purchase_id": purchase_id, "scan": _row_to_dict(get_scan(conn, scan_id))}
     except FikenError as e:
-        update_scan_status(conn, scan_id, "FAILED")
+        update_scan_status(conn, scan_id, ScanStatus.FAILED.value)
         raise HTTPException(500, f"Fiken-feil: {e}")
     finally:
         client.close()
