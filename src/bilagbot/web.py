@@ -330,8 +330,8 @@ async def api_fiken_post(scan_id: int, conn: sqlite3.Connection = Depends(get_db
 
     from bilagbot.fiken import FikenClient
 
+    client = FikenClient()
     try:
-        client = FikenClient()
         file_path = Path(row["file_path"]) if row["file_path"] else None
 
         purchase_id = client.post_invoice(
@@ -349,8 +349,9 @@ async def api_fiken_post(scan_id: int, conn: sqlite3.Connection = Depends(get_db
         )
 
         update_scan_fiken(conn, scan_id, purchase_id)
-        client.close()
         return {"purchase_id": purchase_id, "scan": _row_to_dict(get_scan(conn, scan_id))}
     except FikenError as e:
         update_scan_status(conn, scan_id, "FAILED")
         raise HTTPException(500, f"Fiken-feil: {e}")
+    finally:
+        client.close()
