@@ -2,12 +2,13 @@
 
 import sqlite3
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from bilagbot.database import insert_scan
+from bilagbot.exceptions import FikenError
 from bilagbot.web import app
 
 SCHEMA = """
@@ -205,6 +206,34 @@ class TestDelete:
 
 
 class TestFikenPost:
+    @pytest.fixture
+    def client_approved(self, tmp_path):
+        db_path = tmp_path / "test.db"
+        conn = _make_conn(db_path)
+        from bilagbot.database import update_scan_status
+        insert_scan(
+            conn, file_path="/tmp/test.pdf", file_hash="xyz",
+            supplier_org_number="988312495", supplier_name="Telenor",
+            total_amount=599.0, vat_amount=119.8, currency="NOK",
+            invoice_date="2025-01-15", due_date="2025-02-15",
+            invoice_number="INV-001", match_level="KNOWN",
+            account_code="6900", vat_code="1", raw_claude_json="{}",
+        )
+        update_scan_status(conn, 1, "APPROVED")
+        conn.close()
+        with patch("bilagbot.web.get_connection", side_effect=lambda: _make_conn(db_path)):
+            with TestClient(app) as c:
+                yield c
+
+    def test_fiken_error_still_closes_client(self, client_approved):
+        """FikenClient.close() skal kalles selv om post_invoice kaster FikenError."""
+        mock_client = MagicMock()
+        mock_client.post_invoice.side_effect = FikenError("timeout")
+        with patch("bilagbot.fiken.FikenClient", return_value=mock_client):
+            res = client_approved.post("/api/scans/1/fiken")
+        assert res.status_code == 500
+        mock_client.close.assert_called_once()
+
     @pytest.fixture
     def client_approved_no_date(self, tmp_path):
         db_path = tmp_path / "test.db"
