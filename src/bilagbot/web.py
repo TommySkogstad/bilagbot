@@ -4,7 +4,6 @@ import asyncio
 import logging
 import re
 import secrets
-import shutil
 import sqlite3
 import unicodedata
 from collections.abc import Iterator
@@ -100,6 +99,8 @@ def _safe_filename(raw: str | None) -> str:
     name = _SAFE_NAME_RE.sub("_", name)
     return name[:200] or "ukjent"
 
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
+
 UPLOAD_DIR = DATA_DIR / "uploads"
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -179,8 +180,11 @@ async def api_scan(file: UploadFile = File(...), conn: sqlite3.Connection = Depe
         dest = (upload_root / f"{stem}_{counter}{ext}").resolve()
         counter += 1
 
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "Filen er for stor (maks 50 MB)")
     with open(dest, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+        f.write(content)
 
     # Duplikatsjekk
     fhash = file_hash(dest)
