@@ -32,7 +32,7 @@ uv run bilag scan <fil/mappe>     # Scan faktura
 uv run bilag review               # Vis ventende bilag
 uv run bilag approve <id>         # Godkjenn og lær leverandør
 uv run bilag status               # Oversikt
-uv run bilag fiken post           # Poster godkjente bilag til Fiken
+uv run bilag fiken post-pending   # Poster godkjente bilag til Fiken
 ```
 
 ## Utvikling
