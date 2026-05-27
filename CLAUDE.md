@@ -59,15 +59,20 @@ Inkludert i folgende misc-scripts-jobber:
 # CLI
 bilag scan <fil/mappe>          # Scan faktura med Claude CLI
 bilag review                    # Vis ventende bilag
-bilag approve <id> [-a konto]   # Godkjenn og lar leverandor
-bilag reject <id>               # Avvis
-bilag status                    # Oversikt
-bilag suppliers list/edit       # Leverandoradministrasjon
-bilag fiken validate/post/sync  # Fiken-integrasjon
+bilag approve <id> [-a konto] [-v mva]  # Godkjenn og lær leverandør
+bilag reject <id>                       # Avvis
+bilag status                            # Oversikt
+bilag suppliers list/edit               # Leverandøradministrasjon
+bilag fiken validate                    # Valider Fiken-tilkobling
+bilag fiken sync-accounts               # Synkroniser kontoplanen fra Fiken
+bilag fiken accounts                    # List cachede kontoer
+bilag fiken post <id>                   # Poster enkelt bilag til Fiken
+bilag fiken post-pending                # Poster alle godkjente bilag til Fiken
 
 # Web (Docker)
 docker compose up -d            # Start web-UI + tunnel
 docker compose logs -f backend  # Se backend-logger
+# Maks opplastingsstørrelse: 50 MB per fil (/api/scan)
 ```
 
 ## Konvensjoner
