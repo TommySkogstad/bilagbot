@@ -10,7 +10,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from bilagbot.config import CLAUDE_CLI_TIMEOUT, CLAUDE_MODEL
+from bilagbot.config import CLAUDE_CLI_TIMEOUT, CLAUDE_MODEL, SUPPORTED_MIME_TYPES
 from bilagbot.exceptions import ScannerError
 from bilagbot.models import InvoiceData
 
@@ -52,10 +52,7 @@ def detect_mime_type(path: Path) -> str:
     """Detekter MIME-type for en fil."""
     mime, _ = mimetypes.guess_type(str(path))
     if mime is None:
-        suffix = path.suffix.lower()
-        mime_map = {".pdf": "application/pdf", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-                    ".png": "image/png", ".gif": "image/gif", ".webp": "image/webp"}
-        mime = mime_map.get(suffix, "application/octet-stream")
+        mime = SUPPORTED_MIME_TYPES.get(path.suffix.lower(), "application/octet-stream")
     return mime
 
 

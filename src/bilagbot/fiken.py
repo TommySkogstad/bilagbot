@@ -15,6 +15,7 @@ from bilagbot.config import (
     FIKEN_HTTP_TIMEOUT,
     FIKEN_MAX_RETRIES,
     FIKEN_RETRY_BACKOFF,
+    SUPPORTED_MIME_TYPES,
 )
 from bilagbot.exceptions import (
     FikenAuthError,
@@ -274,13 +275,7 @@ class FikenClient:
         if not file_path.exists():
             raise FikenError(f"Fil ikke funnet: {file_path}")
 
-        mime_types = {
-            ".pdf": "application/pdf",
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".png": "image/png",
-        }
-        content_type = mime_types.get(file_path.suffix.lower(), "application/octet-stream")
+        content_type = SUPPORTED_MIME_TYPES.get(file_path.suffix.lower(), "application/octet-stream")
 
         with open(file_path, "rb") as f:
             response = self._request(

@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
+from bilagbot.config import SUPPORTED_MIME_TYPES
 from bilagbot.exceptions import (
     FikenAuthError,
     FikenError,
@@ -261,6 +262,17 @@ class TestUploadAttachment:
     def test_file_not_found(self, client, mock_http):
         with pytest.raises(FikenError, match="Fil ikke funnet"):
             client.upload_attachment(123, Path("/finnes/ikke.pdf"))
+
+    @pytest.mark.parametrize("suffix,expected_mime", list(SUPPORTED_MIME_TYPES.items()))
+    def test_mime_type_uses_shared_mapping(self, client, mock_http, tmp_path, suffix, expected_mime):
+        test_file = tmp_path / f"test{suffix}"
+        test_file.write_bytes(b"dummy")
+        mock_http.request.return_value = _mock_response(201)
+        client.upload_attachment(123, test_file)
+        _, kwargs = mock_http.request.call_args
+        files = kwargs.get("files", {})
+        _, _, content_type = files["file"]
+        assert content_type == expected_mime
 
 
 # --- Post invoice (komplett flyt) ---
