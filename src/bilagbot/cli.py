@@ -17,6 +17,7 @@ from bilagbot.database import (
     update_scan_classification,
     update_scan_fiken,
     update_scan_status,
+    update_supplier_auto_approve,
     update_supplier_fields,
 )
 from bilagbot.exceptions import FikenError, ScannerError
@@ -254,7 +255,6 @@ def suppliers_edit(org_number: str, account: str | None, vat: str | None, auto: 
     if account or vat:
         update_supplier_fields(conn, org_number, account_code=account, vat_code=vat)
     if auto is not None:
-        from bilagbot.database import update_supplier_auto_approve
         update_supplier_auto_approve(conn, org_number, auto)
 
     supplier = get_supplier(conn, org_number)
