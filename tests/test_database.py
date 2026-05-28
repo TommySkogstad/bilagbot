@@ -217,7 +217,7 @@ class TestRunMigrations:
 
     def test_idempotent_full_migrations(self):
         """Re-kjøring av MIGRATIONS på allerede migrert DB kaster ikke unntak."""
-        from bilagbot.database import MIGRATIONS, SCHEMA
+        from bilagbot.database import SCHEMA
         conn = sqlite3.connect(":memory:")
         conn.row_factory = sqlite3.Row
         conn.executescript(SCHEMA)
