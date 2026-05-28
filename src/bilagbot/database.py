@@ -1,5 +1,6 @@
 """SQLite-database for BilagBot."""
 
+import re
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -74,15 +75,24 @@ def get_connection(db_path: Path | None = None) -> sqlite3.Connection:
     return conn
 
 
+_ADD_COLUMN_RE = re.compile(
+    r"ALTER\s+TABLE\s+(\w+)\s+ADD\s+COLUMN\s+(\w+)", re.IGNORECASE
+)
+
+
+def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    return any(row["name"] == column for row in rows)
+
+
 def _run_migrations(conn: sqlite3.Connection, migrations: list[str] | None = None) -> None:
-    """Kjør migrasjoner som legger til nye kolonner (ignorerer duplikater)."""
+    """Kjør migrasjoner. ADD COLUMN hoppes over hvis kolonnen allerede finnes."""
     for sql in (migrations if migrations is not None else MIGRATIONS):
-        try:
-            conn.execute(sql)
-            conn.commit()
-        except sqlite3.OperationalError as e:
-            if "duplicate column name" not in str(e).lower() and "already exists" not in str(e).lower():
-                raise
+        m = _ADD_COLUMN_RE.match(sql.strip())
+        if m and _column_exists(conn, m.group(1), m.group(2)):
+            continue
+        conn.execute(sql)
+        conn.commit()
 
 
 def insert_scan(conn: sqlite3.Connection, *, file_path: str, file_hash: str, supplier_org_number: str | None,
