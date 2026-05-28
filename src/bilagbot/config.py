@@ -33,6 +33,16 @@ FIKEN_MAX_RETRIES: int = int(os.getenv("FIKEN_MAX_RETRIES", "3"))
 FIKEN_RETRY_BACKOFF: int = int(os.getenv("FIKEN_RETRY_BACKOFF", "2"))
 
 
+SUPPORTED_MIME_TYPES: dict[str, str] = {
+    ".pdf": "application/pdf",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+}
+
+
 def ensure_data_dir() -> Path:
     """Opprett data-katalog hvis den ikke finnes."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
