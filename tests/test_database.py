@@ -200,6 +200,7 @@ class TestSuppliers:
 class TestRunMigrations:
     def _make_conn(self) -> sqlite3.Connection:
         conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
         conn.execute("CREATE TABLE t (a TEXT)")
         conn.commit()
         return conn
@@ -213,3 +214,18 @@ class TestRunMigrations:
         conn = self._make_conn()
         _run_migrations(conn, migrations=["ALTER TABLE t ADD COLUMN b TEXT"])
         _run_migrations(conn, migrations=["ALTER TABLE t ADD COLUMN b TEXT"])
+
+    def test_idempotent_full_migrations(self):
+        """Re-kjøring av MIGRATIONS på allerede migrert DB kaster ikke unntak."""
+        from bilagbot.database import SCHEMA
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.executescript(SCHEMA)
+        _run_migrations(conn)
+        _run_migrations(conn)  # andre kjøring skal ikke kaste
+
+    def test_unknown_operational_error_propagates(self):
+        """OperationalError som ikke skyldes eksisterende kolonne propageres fortsatt."""
+        conn = self._make_conn()
+        with pytest.raises(sqlite3.OperationalError):
+            _run_migrations(conn, migrations=["ALTER TABLE nonexistent ADD COLUMN x TEXT"])
