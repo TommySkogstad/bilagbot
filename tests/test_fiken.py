@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
+from bilagbot.config import SUPPORTED_MIME_TYPES
 from bilagbot.exceptions import (
     FikenAuthError,
     FikenError,
@@ -13,7 +14,6 @@ from bilagbot.exceptions import (
     FikenRateLimitError,
     FikenValidationError,
 )
-from bilagbot.config import SUPPORTED_MIME_TYPES
 from bilagbot.fiken import FikenClient, amount_to_cents, vat_code_to_type
 
 # --- Hjelpefunksjoner ---
