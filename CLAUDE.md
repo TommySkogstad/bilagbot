@@ -16,9 +16,11 @@ AI-drevet bilagsscanner for Ingenior Tommy Skogstad ENK (org.nr. 921 954 565).
 
 | Tjeneste | Port |
 |----------|------|
-| Nginx (dev) | 9500 |
-| FastAPI backend | 8086 |
+| Nginx (dev) | 9500 (host) |
+| FastAPI backend | 8086 (kun intern i Docker-nettverket, ikke eksponert på host) |
 | Cloudflare Tunnel | bilag.tommytv.no |
+
+> **OBS – portkonflikt**: Port 9500 overlapper med `smart-casual` (dev). Begge tjenester kan ikke kjøres parallelt i dev uten portkollisjon. Stopp den ene tjenesten før du starter den andre (`docker compose down` i aktuell mappe).
 
 ## Arkitektur
 
