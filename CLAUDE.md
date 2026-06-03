@@ -25,7 +25,7 @@ AI-drevet bilagsscanner for Ingenior Tommy Skogstad ENK (org.nr. 921 954 565).
 ## Arkitektur
 
 ```
-web.py        — FastAPI web-app (upload, review, approve, fiken post)
+web.py        — FastAPI web-app (upload, review, approve, reject, delete, fiken post)
 scanner.py    — Claude CLI-kall, filvalidering, JSON-parsing
 classifier.py — Leverandorgjenkjenning og laring (UNKNOWN/KNOWN/AUTO)
 database.py   — SQLite (scan_log, known_suppliers, fiken_accounts)
@@ -37,6 +37,22 @@ config.py     — Miljovariabel-konfigurasjon
 exceptions.py — Feilhierarki
 static/       — HTML/CSS frontend (brand guide-styling)
 ```
+
+## API-endepunkter (web)
+
+Alle endepunkter unntatt `/api/health` krever autentisering (`require_auth`).
+
+| Metode | Endepunkt | Beskrivelse |
+|--------|-----------|-------------|
+| `GET` | `/` | Web-UI (HTML) |
+| `GET` | `/api/health` | Helsesjekk (ingen auth) |
+| `POST` | `/api/scan` | Last opp og skann faktura (maks 50 MB) |
+| `GET` | `/api/scans` | List alle bilag |
+| `GET` | `/api/scans/{scan_id}` | Hent enkelt bilag |
+| `POST` | `/api/scans/{scan_id}/approve` | Godkjenn bilag og lær leverandør |
+| `POST` | `/api/scans/{scan_id}/reject` | Avvis bilag |
+| `DELETE` | `/api/scans/{scan_id}` | Slett bilag og tilhørende fil permanent |
+| `POST` | `/api/scans/{scan_id}/fiken` | Bokfør godkjent bilag i Fiken |
 
 ## Deploy
 
