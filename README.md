@@ -38,7 +38,7 @@ uv run bilag fiken post-pending   # Poster godkjente bilag til Fiken
 ## Utvikling
 
 ```bash
-uv run pytest tests/ -v           # Kjør tester (222 tester)
+uv run pytest tests/ -v           # Kjør tester (230 tester)
 uv run ruff check src/ tests/     # Linter
 ```
 
