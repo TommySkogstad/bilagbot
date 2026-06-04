@@ -27,7 +27,7 @@ class TestVatCodeToType:
             ("3", "HIGH"),
             ("11", "MEDIUM"),
             ("13", "LOW"),
-            ("6", "OUTSIDE"),
+            ("6", "HIGH"),  # OUTSIDE er kun gyldig for salg, ikke kjøp
             ("0", "NONE"),
             ("7", "NONE"),
             ("12", "RAW_FISH"),

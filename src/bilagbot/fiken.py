@@ -32,7 +32,6 @@ VAT_CODE_TO_TYPE: dict[str, str] = {
     "0": "NONE",
     "1": "HIGH",
     "3": "HIGH",
-    "6": "OUTSIDE",
     "7": "NONE",
     "11": "MEDIUM",
     "12": "RAW_FISH",
