@@ -208,27 +208,29 @@ def update_supplier_auto_approve(conn: sqlite3.Connection, org_number: str, auto
     conn.commit()
 
 
+_ALLOWED_SUPPLIER_FIELDS: frozenset[str] = frozenset({"account_code", "account_name", "vat_code"})
+
+
 def update_supplier_fields(conn: sqlite3.Connection, org_number: str, *,
                            account_code: str | None = None, account_name: str | None = None,
                            vat_code: str | None = None) -> None:
     """Oppdater spesifikke felt for en leverandør."""
-    updates = []
-    params: list = []
+    values: dict[str, str] = {}
     if account_code is not None:
-        updates.append("account_code = ?")
-        params.append(account_code)
+        values["account_code"] = account_code
     if account_name is not None:
-        updates.append("account_name = ?")
-        params.append(account_name)
+        values["account_name"] = account_name
     if vat_code is not None:
-        updates.append("vat_code = ?")
-        params.append(vat_code)
-    if not updates:
+        values["vat_code"] = vat_code
+    if not values:
         return
-    updates.append("updated_at = ?")
-    params.append(_now())
-    params.append(org_number)
-    conn.execute(f"UPDATE known_suppliers SET {', '.join(updates)} WHERE org_number = ?", params)
+    cols = [c for c in values if c in _ALLOWED_SUPPLIER_FIELDS]
+    assignments = ", ".join(f"{c} = ?" for c in cols) + ", updated_at = ?"
+    params: list = [values[c] for c in cols] + [_now(), org_number]
+    conn.execute(
+        f"UPDATE known_suppliers SET {assignments} WHERE org_number = ?",  # noqa: S608
+        params,
+    )
     conn.commit()
 
 
