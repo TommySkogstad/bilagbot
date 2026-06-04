@@ -201,3 +201,54 @@ class TestSuppliersCommand:
         with patch("bilagbot.cli.get_connection", return_value=get_connection(db_path=db_path)):
             result = runner.invoke(main, ["suppliers", "edit", "123456789", "--account", "6900"])
         assert "finnes ikke" in result.output
+
+
+class TestConnectionCleanup:
+    """Verifiserer at DB-tilkoblingen alltid lukkes, selv ved uventede exceptions."""
+
+    def test_approve_closes_connection_on_database_error(self, runner):
+        """conn.close() kalles selv om learn_from_approval kaster DatabaseError."""
+        from bilagbot.exceptions import DatabaseError
+
+        conn_mock = MagicMock()
+        mock_scan = {
+            "id": 1, "status": "PENDING", "supplier_name": "Telenor",
+            "supplier_org_number": "988312495", "account_code": "6900",
+            "vat_code": "1", "match_level": "KNOWN",
+        }
+
+        with patch("bilagbot.cli.get_connection", return_value=conn_mock), \
+             patch("bilagbot.cli.get_scan", return_value=mock_scan), \
+             patch("bilagbot.cli.update_scan_status"), \
+             patch("bilagbot.cli.update_scan_classification"), \
+             patch("bilagbot.cli.learn_from_approval", side_effect=DatabaseError("DB-feil")), \
+             patch("bilagbot.cli.get_supplier"):
+            runner.invoke(main, ["approve", "1"])
+
+        conn_mock.close.assert_called()
+
+    def test_reject_closes_connection_on_database_error(self, runner):
+        """conn.close() kalles selv om update_scan_status kaster DatabaseError."""
+        from bilagbot.exceptions import DatabaseError
+
+        conn_mock = MagicMock()
+        mock_scan = {"id": 1, "status": "PENDING"}
+
+        with patch("bilagbot.cli.get_connection", return_value=conn_mock), \
+             patch("bilagbot.cli.get_scan", return_value=mock_scan), \
+             patch("bilagbot.cli.update_scan_status", side_effect=DatabaseError("DB-feil")):
+            runner.invoke(main, ["reject", "1"])
+
+        conn_mock.close.assert_called()
+
+    def test_scan_closes_connection_on_database_error(self, runner, sample_pdf):
+        """conn.close() kalles selv om find_duplicate kaster DatabaseError."""
+        from bilagbot.exceptions import DatabaseError
+
+        conn_mock = MagicMock()
+
+        with patch("bilagbot.cli.get_connection", return_value=conn_mock), \
+             patch("bilagbot.cli.find_duplicate", side_effect=DatabaseError("DB-feil")):
+            runner.invoke(main, ["scan", str(sample_pdf)])
+
+        conn_mock.close.assert_called()
