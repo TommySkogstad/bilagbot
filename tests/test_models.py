@@ -112,6 +112,22 @@ class TestInvoiceDataDateValidation:
         invoice = InvoiceData(invoice_date="1970-01-01")
         assert invoice.invoice_date == "1970-01-01"
 
+    def test_leap_day_in_non_leap_year_raises(self):
+        import pytest
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError):
+            InvoiceData(invoice_date="2025-02-29")
+
+    def test_leap_day_in_leap_year_ok(self):
+        invoice = InvoiceData(invoice_date="2024-02-29")
+        assert invoice.invoice_date == "2024-02-29"
+
+    def test_day_zero_raises(self):
+        import pytest
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError):
+            InvoiceData(invoice_date="2025-01-00")
+
 
 class TestInvoiceDataOrgNumberValidation:
     def test_too_short_org_number_raises(self):
