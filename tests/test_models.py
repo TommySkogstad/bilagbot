@@ -90,6 +90,28 @@ class TestInvoiceDataDateValidation:
         invoice = InvoiceData(invoice_date=None)
         assert invoice.invoice_date is None
 
+    def test_impossible_month_raises(self):
+        import pytest
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError):
+            InvoiceData(invoice_date="2025-13-45")
+
+    def test_impossible_day_raises(self):
+        import pytest
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError):
+            InvoiceData(invoice_date="2025-02-30")
+
+    def test_impossible_due_date_raises(self):
+        import pytest
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError):
+            InvoiceData(due_date="2025-13-01")
+
+    def test_epoch_date_ok(self):
+        invoice = InvoiceData(invoice_date="1970-01-01")
+        assert invoice.invoice_date == "1970-01-01"
+
 
 class TestInvoiceDataOrgNumberValidation:
     def test_too_short_org_number_raises(self):
