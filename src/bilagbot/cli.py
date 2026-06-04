@@ -75,9 +75,11 @@ def scan(path: str):
         files = [target]
 
     conn = get_connection()
-    for file in files:
-        _scan_single_file(conn, file)
-    conn.close()
+    try:
+        for file in files:
+            _scan_single_file(conn, file)
+    finally:
+        conn.close()
 
 
 def _scan_single_file(conn, file: Path) -> None:
@@ -138,10 +140,12 @@ def _scan_single_file(conn, file: Path) -> None:
 def review():
     """Vis ventende bilag for review."""
     conn = get_connection()
-    rows = show_pending_list(conn)
-    if rows:
-        console.print("\nBruk [bold]bilag approve <id>[/bold] eller [bold]bilag reject <id>[/bold]")
-    conn.close()
+    try:
+        rows = show_pending_list(conn)
+        if rows:
+            console.print("\nBruk [bold]bilag approve <id>[/bold] eller [bold]bilag reject <id>[/bold]")
+    finally:
+        conn.close()
 
 
 @main.command()
@@ -151,49 +155,48 @@ def review():
 def approve(scan_id: int, account: str | None, vat: str | None):
     """Godkjenn et bilag og lær leverandøren."""
     conn = get_connection()
-    row = get_scan(conn, scan_id)
-    if not row:
-        console.print(f"[red]Bilag #{scan_id} finnes ikke[/red]")
-        conn.close()
-        return
+    try:
+        row = get_scan(conn, scan_id)
+        if not row:
+            console.print(f"[red]Bilag #{scan_id} finnes ikke[/red]")
+            return
 
-    if row["status"] != ScanStatus.PENDING.value:
-        console.print(f"[yellow]Bilag #{scan_id} har status {row['status']}, kan ikke godkjennes[/yellow]")
-        conn.close()
-        return
+        if row["status"] != ScanStatus.PENDING.value:
+            console.print(f"[yellow]Bilag #{scan_id} har status {row['status']}, kan ikke godkjennes[/yellow]")
+            return
 
-    # Bruk override eller eksisterende verdier
-    final_account = account or row["account_code"]
-    final_vat = vat or row["vat_code"]
+        # Bruk override eller eksisterende verdier
+        final_account = account or row["account_code"]
+        final_vat = vat or row["vat_code"]
 
-    # Oppdater klassifisering hvis override
-    if account or vat:
-        update_scan_classification(
-            conn, scan_id,
-            match_level=row["match_level"],
-            account_code=final_account,
-            vat_code=final_vat,
+        # Oppdater klassifisering hvis override
+        if account or vat:
+            update_scan_classification(
+                conn, scan_id,
+                match_level=row["match_level"],
+                account_code=final_account,
+                vat_code=final_vat,
+            )
+
+        update_scan_status(conn, scan_id, ScanStatus.APPROVED.value)
+
+        # Lær leverandøren
+        invoice = InvoiceData(
+            vendor_name=row["supplier_name"],
+            vendor_org_number=row["supplier_org_number"],
         )
+        learn_from_approval(conn, invoice, account_code=final_account, vat_code=final_vat)
 
-    update_scan_status(conn, scan_id, ScanStatus.APPROVED.value)
+        show_scan_detail(get_scan(conn, scan_id))
+        console.print(f"[green]✓ Bilag #{scan_id} godkjent[/green]")
 
-    # Lær leverandøren
-    invoice = InvoiceData(
-        vendor_name=row["supplier_name"],
-        vendor_org_number=row["supplier_org_number"],
-    )
-    learn_from_approval(conn, invoice, account_code=final_account, vat_code=final_vat)
-
-    show_scan_detail(get_scan(conn, scan_id))
-    console.print(f"[green]✓ Bilag #{scan_id} godkjent[/green]")
-
-    # Sjekk om leverandør nå er auto-approved
-    if row["supplier_org_number"]:
-        supplier = get_supplier(conn, row["supplier_org_number"])
-        if supplier and supplier["auto_approve"]:
-            console.print(f"[green]★ {supplier['supplier_name']} er nå auto-godkjent![/green]")
-
-    conn.close()
+        # Sjekk om leverandør nå er auto-approved
+        if row["supplier_org_number"]:
+            supplier = get_supplier(conn, row["supplier_org_number"])
+            if supplier and supplier["auto_approve"]:
+                console.print(f"[green]★ {supplier['supplier_name']} er nå auto-godkjent![/green]")
+    finally:
+        conn.close()
 
 
 @main.command()
@@ -201,28 +204,30 @@ def approve(scan_id: int, account: str | None, vat: str | None):
 def reject(scan_id: int):
     """Avvis et bilag."""
     conn = get_connection()
-    row = get_scan(conn, scan_id)
-    if not row:
-        console.print(f"[red]Bilag #{scan_id} finnes ikke[/red]")
-        conn.close()
-        return
+    try:
+        row = get_scan(conn, scan_id)
+        if not row:
+            console.print(f"[red]Bilag #{scan_id} finnes ikke[/red]")
+            return
 
-    if row["status"] != ScanStatus.PENDING.value:
-        console.print(f"[yellow]Bilag #{scan_id} har status {row['status']}, kan ikke avvises[/yellow]")
-        conn.close()
-        return
+        if row["status"] != ScanStatus.PENDING.value:
+            console.print(f"[yellow]Bilag #{scan_id} har status {row['status']}, kan ikke avvises[/yellow]")
+            return
 
-    update_scan_status(conn, scan_id, ScanStatus.REJECTED.value)
-    console.print(f"[red]✗ Bilag #{scan_id} avvist[/red]")
-    conn.close()
+        update_scan_status(conn, scan_id, ScanStatus.REJECTED.value)
+        console.print(f"[red]✗ Bilag #{scan_id} avvist[/red]")
+    finally:
+        conn.close()
 
 
 @main.command()
 def status():
     """Vis oversikt over alle bilag."""
     conn = get_connection()
-    show_status_summary(conn)
-    conn.close()
+    try:
+        show_status_summary(conn)
+    finally:
+        conn.close()
 
 
 @main.group()
@@ -234,8 +239,10 @@ def suppliers():
 def suppliers_list():
     """Vis alle kjente leverandører."""
     conn = get_connection()
-    show_suppliers(conn)
-    conn.close()
+    try:
+        show_suppliers(conn)
+    finally:
+        conn.close()
 
 
 @suppliers.command("edit")
@@ -246,23 +253,24 @@ def suppliers_list():
 def suppliers_edit(org_number: str, account: str | None, vat: str | None, auto: bool | None):
     """Rediger en leverandør."""
     conn = get_connection()
-    supplier = get_supplier(conn, org_number)
-    if not supplier:
-        console.print(f"[red]Leverandør {org_number} finnes ikke[/red]")
+    try:
+        supplier = get_supplier(conn, org_number)
+        if not supplier:
+            console.print(f"[red]Leverandør {org_number} finnes ikke[/red]")
+            return
+
+        if account or vat:
+            update_supplier_fields(conn, org_number, account_code=account, vat_code=vat)
+        if auto is not None:
+            update_supplier_auto_approve(conn, org_number, auto)
+
+        supplier = get_supplier(conn, org_number)
+        console.print(f"[green]✓ {supplier['supplier_name']} oppdatert[/green]")
+        console.print(f"  Konto: {supplier['account_code'] or '—'}")
+        console.print(f"  MVA: {supplier['vat_code'] or '—'}")
+        console.print(f"  Auto: {'Ja' if supplier['auto_approve'] else 'Nei'}")
+    finally:
         conn.close()
-        return
-
-    if account or vat:
-        update_supplier_fields(conn, org_number, account_code=account, vat_code=vat)
-    if auto is not None:
-        update_supplier_auto_approve(conn, org_number, auto)
-
-    supplier = get_supplier(conn, org_number)
-    console.print(f"[green]✓ {supplier['supplier_name']} oppdatert[/green]")
-    console.print(f"  Konto: {supplier['account_code'] or '—'}")
-    console.print(f"  MVA: {supplier['vat_code'] or '—'}")
-    console.print(f"  Auto: {'Ja' if supplier['auto_approve'] else 'Nei'}")
-    conn.close()
 
 
 # --- Fiken-kommandoer ---
@@ -300,35 +308,39 @@ def fiken_sync_accounts():
     """Synkroniser kontoplan fra Fiken."""
     from bilagbot.fiken import FikenClient
 
+    conn = get_connection()
     try:
-        client = FikenClient()
-        accounts = client.get_accounts()
-        conn = get_connection()
-        count = sync_fiken_accounts(conn, accounts)
-        console.print(f"[green]✓ Synkronisert {count} kontoer fra Fiken[/green]")
+        try:
+            client = FikenClient()
+            accounts = client.get_accounts()
+            count = sync_fiken_accounts(conn, accounts)
+            console.print(f"[green]✓ Synkronisert {count} kontoer fra Fiken[/green]")
+            client.close()
+        except FikenError as e:
+            console.print(f"[red]✗ Feil: {e}[/red]")
+    finally:
         conn.close()
-        client.close()
-    except FikenError as e:
-        console.print(f"[red]✗ Feil: {e}[/red]")
 
 
 @fiken.command("accounts")
 def fiken_accounts_list():
     """Vis cached kontoplan fra Fiken."""
     conn = get_connection()
-    accounts = get_fiken_accounts(conn)
-    if not accounts:
-        console.print("[yellow]Ingen kontoer i cache. Kjør 'bilag fiken sync-accounts' først.[/yellow]")
-    else:
-        from rich.table import Table
+    try:
+        accounts = get_fiken_accounts(conn)
+        if not accounts:
+            console.print("[yellow]Ingen kontoer i cache. Kjør 'bilag fiken sync-accounts' først.[/yellow]")
+        else:
+            from rich.table import Table
 
-        table = Table(title=f"Fiken-kontoplan ({len(accounts)} kontoer)")
-        table.add_column("Kode", style="bold")
-        table.add_column("Navn")
-        for acc in accounts:
-            table.add_row(acc["code"], acc["name"])
-        console.print(table)
-    conn.close()
+            table = Table(title=f"Fiken-kontoplan ({len(accounts)} kontoer)")
+            table.add_column("Kode", style="bold")
+            table.add_column("Navn")
+            for acc in accounts:
+                table.add_row(acc["code"], acc["name"])
+            console.print(table)
+    finally:
+        conn.close()
 
 
 @fiken.command("post")
@@ -336,36 +348,33 @@ def fiken_accounts_list():
 def fiken_post(scan_id: int):
     """Bokfør et godkjent bilag til Fiken."""
     conn = get_connection()
-    row = get_scan(conn, scan_id)
-    if not row:
-        console.print(f"[red]Bilag #{scan_id} finnes ikke[/red]")
-        conn.close()
-        return
-
-    if row["status"] != ScanStatus.APPROVED.value:
-        console.print(f"[yellow]Bilag #{scan_id} har status {row['status']} — kun APPROVED kan bokføres[/yellow]")
-        conn.close()
-        return
-
-    if not row["account_code"]:
-        console.print(f"[red]Bilag #{scan_id} mangler kontokode — bruk 'bilag approve {scan_id} -a <konto>'[/red]")
-        conn.close()
-        return
-
-    if not row["invoice_date"]:
-        console.print(f"[red]Bilag #{scan_id} mangler fakturadato — legg inn dato før bokføring[/red]")
-        conn.close()
-        return
-
-    from bilagbot.fiken import FikenClient
-
     try:
-        client = FikenClient()
-        purchase_id = _post_single_invoice(row, conn, client)
-        console.print(f"[green]✓ Bilag #{scan_id} bokført til Fiken (kjøp #{purchase_id})[/green]")
-        client.close()
-    except FikenError as e:
-        console.print(f"[red]✗ Fiken-feil: {e}[/red]")
+        row = get_scan(conn, scan_id)
+        if not row:
+            console.print(f"[red]Bilag #{scan_id} finnes ikke[/red]")
+            return
+
+        if row["status"] != ScanStatus.APPROVED.value:
+            console.print(f"[yellow]Bilag #{scan_id} har status {row['status']} — kun APPROVED kan bokføres[/yellow]")
+            return
+
+        if not row["account_code"]:
+            console.print(f"[red]Bilag #{scan_id} mangler kontokode — bruk 'bilag approve {scan_id} -a <konto>'[/red]")
+            return
+
+        if not row["invoice_date"]:
+            console.print(f"[red]Bilag #{scan_id} mangler fakturadato — legg inn dato før bokføring[/red]")
+            return
+
+        from bilagbot.fiken import FikenClient
+
+        try:
+            client = FikenClient()
+            purchase_id = _post_single_invoice(row, conn, client)
+            console.print(f"[green]✓ Bilag #{scan_id} bokført til Fiken (kjøp #{purchase_id})[/green]")
+            client.close()
+        except FikenError as e:
+            console.print(f"[red]✗ Fiken-feil: {e}[/red]")
     finally:
         conn.close()
 
@@ -374,50 +383,49 @@ def fiken_post(scan_id: int):
 def fiken_post_pending():
     """Bokfør alle godkjente bilag til Fiken."""
     conn = get_connection()
-    approved = get_scans_by_status(conn, ScanStatus.APPROVED.value)
-
-    if not approved:
-        console.print("[yellow]Ingen godkjente bilag å bokføre.[/yellow]")
-        conn.close()
-        return
-
-    postable = [r for r in approved if r["account_code"]]
-    skipped = len(approved) - len(postable)
-
-    if skipped:
-        console.print(f"[yellow]Hopper over {skipped} bilag uten kontokode[/yellow]")
-
-    no_date = [r for r in postable if not r["invoice_date"]]
-    postable = [r for r in postable if r["invoice_date"]]
-
-    if no_date:
-        ids = [r["id"] for r in no_date]
-        console.print(f"[yellow]Hopper over {len(no_date)} bilag uten fakturadato: {ids}[/yellow]")
-
-    if not postable:
-        console.print("[yellow]Ingen bilag med kontokode å bokføre.[/yellow]")
-        conn.close()
-        return
-
-    from bilagbot.fiken import FikenClient
-
     try:
-        client = FikenClient()
-        success = 0
-        failed = 0
+        approved = get_scans_by_status(conn, ScanStatus.APPROVED.value)
 
-        for row in postable:
-            try:
-                purchase_id = _post_single_invoice(row, conn, client)
-                console.print(f"  [green]✓[/green] #{row['id']} → kjøp #{purchase_id}")
-                success += 1
-            except FikenError as e:
-                console.print(f"  [red]✗[/red] #{row['id']}: {e}")
-                failed += 1
+        if not approved:
+            console.print("[yellow]Ingen godkjente bilag å bokføre.[/yellow]")
+            return
 
-        console.print(f"\n[bold]Resultat: {success} bokført, {failed} feilet[/bold]")
-        client.close()
-    except FikenError as e:
-        console.print(f"[red]✗ Fiken-feil: {e}[/red]")
+        postable = [r for r in approved if r["account_code"]]
+        skipped = len(approved) - len(postable)
+
+        if skipped:
+            console.print(f"[yellow]Hopper over {skipped} bilag uten kontokode[/yellow]")
+
+        no_date = [r for r in postable if not r["invoice_date"]]
+        postable = [r for r in postable if r["invoice_date"]]
+
+        if no_date:
+            ids = [r["id"] for r in no_date]
+            console.print(f"[yellow]Hopper over {len(no_date)} bilag uten fakturadato: {ids}[/yellow]")
+
+        if not postable:
+            console.print("[yellow]Ingen bilag med kontokode å bokføre.[/yellow]")
+            return
+
+        from bilagbot.fiken import FikenClient
+
+        try:
+            client = FikenClient()
+            success = 0
+            failed = 0
+
+            for row in postable:
+                try:
+                    purchase_id = _post_single_invoice(row, conn, client)
+                    console.print(f"  [green]✓[/green] #{row['id']} → kjøp #{purchase_id}")
+                    success += 1
+                except FikenError as e:
+                    console.print(f"  [red]✗[/red] #{row['id']}: {e}")
+                    failed += 1
+
+            console.print(f"\n[bold]Resultat: {success} bokført, {failed} feilet[/bold]")
+            client.close()
+        except FikenError as e:
+            console.print(f"[red]✗ Fiken-feil: {e}[/red]")
     finally:
         conn.close()
