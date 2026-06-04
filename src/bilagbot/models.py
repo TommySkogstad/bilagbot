@@ -1,6 +1,7 @@
 """Pydantic-modeller for BilagBot."""
 
 import re
+from datetime import datetime
 from enum import Enum
 
 from pydantic import BaseModel, field_validator
@@ -46,8 +47,11 @@ class InvoiceData(BaseModel):
     @field_validator("invoice_date", "due_date", mode="before")
     @classmethod
     def validate_date_format(cls, v: str | None) -> str | None:
-        if v is not None and not re.match(r"^\d{4}-\d{2}-\d{2}$", v):
-            raise ValueError(f"Ugyldig datoformat (forventet YYYY-MM-DD): {v}")
+        if v is not None:
+            try:
+                datetime.strptime(v, "%Y-%m-%d")
+            except ValueError:
+                raise ValueError(f"Ugyldig dato (forventet YYYY-MM-DD): {v}")
         return v
 
     @field_validator("vendor_org_number", mode="before")
