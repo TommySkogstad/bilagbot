@@ -50,7 +50,7 @@ class InvoiceData(BaseModel):
         if v is not None:
             try:
                 datetime.strptime(v, "%Y-%m-%d")
-            except ValueError:
+            except (ValueError, TypeError):
                 raise ValueError(f"Ugyldig dato (forventet YYYY-MM-DD): {v}")
         return v
 
