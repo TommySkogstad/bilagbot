@@ -180,6 +180,48 @@ class TestSuppliers:
         assert supplier["account_code"] == "7100"
         assert supplier["vat_code"] == "11"
 
+    def test_update_fields_allowlist_constant_exists(self):
+        from bilagbot.database import _ALLOWED_SUPPLIER_FIELDS
+        assert "account_code" in _ALLOWED_SUPPLIER_FIELDS
+        assert "account_name" in _ALLOWED_SUPPLIER_FIELDS
+        assert "vat_code" in _ALLOWED_SUPPLIER_FIELDS
+        assert "supplier_name" not in _ALLOWED_SUPPLIER_FIELDS
+        assert "org_number" not in _ALLOWED_SUPPLIER_FIELDS
+
+    def test_update_fields_each_field_individually(self, db):
+        upsert_supplier(db, org_number="123456789", supplier_name="Test AS",
+                        account_code="6900", account_name="Gammel AS", vat_code="1")
+        update_supplier_fields(db, "123456789", account_code="7100")
+        supplier = get_supplier(db, "123456789")
+        assert supplier["account_code"] == "7100"
+        assert supplier["account_name"] == "Gammel AS"
+        assert supplier["vat_code"] == "1"
+
+        update_supplier_fields(db, "123456789", account_name="Ny AS")
+        supplier = get_supplier(db, "123456789")
+        assert supplier["account_name"] == "Ny AS"
+        assert supplier["account_code"] == "7100"
+
+        update_supplier_fields(db, "123456789", vat_code="25")
+        supplier = get_supplier(db, "123456789")
+        assert supplier["vat_code"] == "25"
+        assert supplier["account_name"] == "Ny AS"
+
+    def test_update_fields_noop_when_all_none(self, db):
+        upsert_supplier(db, org_number="123456789", supplier_name="Test AS")
+        supplier_before = get_supplier(db, "123456789")
+        update_supplier_fields(db, "123456789")
+        supplier_after = get_supplier(db, "123456789")
+        assert supplier_after["updated_at"] == supplier_before["updated_at"]
+
+    def test_update_fields_sql_special_chars_in_values(self, db):
+        upsert_supplier(db, org_number="123456789", supplier_name="Test AS")
+        payload = "'; DROP TABLE known_suppliers; --"
+        update_supplier_fields(db, "123456789", account_name=payload)
+        supplier = get_supplier(db, "123456789")
+        assert supplier["account_name"] == payload
+        assert get_supplier(db, "123456789") is not None
+
     def test_get_all_sorted(self, db):
         upsert_supplier(db, org_number="222222222", supplier_name="Zulu AS")
         upsert_supplier(db, org_number="111111111", supplier_name="Alfa AS")
