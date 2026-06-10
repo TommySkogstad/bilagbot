@@ -277,6 +277,37 @@ class TestUpload:
             )
         assert res.status_code == 413
 
+    def test_database_error_after_scan_deletes_file(self, client, tmp_path):
+        """DatabaseError fra insert_scan() skal slette den opplastede filen (ingen orphans)."""
+        from bilagbot.exceptions import DatabaseError
+        from bilagbot.models import InvoiceData
+
+        fake_invoice = InvoiceData(vendor_name="Test AS", vendor_org_number="123456789")
+        upload_dir = tmp_path / "uploads"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+
+        mock_result = MagicMock()
+        mock_result.supplier_name = "Test AS"
+        mock_result.match_level.value = "UNKNOWN"
+        mock_result.account_code = None
+        mock_result.vat_code = None
+
+        with patch("bilagbot.web.ensure_data_dir"), \
+             patch("bilagbot.web.UPLOAD_DIR", upload_dir), \
+             patch("bilagbot.web.file_hash", return_value="newhash"), \
+             patch("bilagbot.web.find_duplicate", return_value=None), \
+             patch("bilagbot.web.scan_file", return_value=(fake_invoice, "{}")), \
+             patch("bilagbot.web.classify", return_value=mock_result), \
+             patch("bilagbot.web.insert_scan", side_effect=DatabaseError("DB nede")):
+            res = client.post(
+                "/api/scan",
+                files={"file": ("faktura.pdf", b"dummy pdf content", "application/pdf")},
+            )
+
+        assert res.status_code == 500
+        orphaned_files = list(upload_dir.iterdir())
+        assert orphaned_files == [], f"Orphaned filer funnet: {orphaned_files}"
+
 
 class TestSanitizeFilename:
     """Tester for _safe_filename()-hjelperfunksjon."""

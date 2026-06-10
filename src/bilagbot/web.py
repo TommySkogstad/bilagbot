@@ -38,7 +38,7 @@ from bilagbot.database import (
     update_scan_fiken,
     update_scan_status,
 )
-from bilagbot.exceptions import FikenError, ScannerError
+from bilagbot.exceptions import DatabaseError, FikenError, ScannerError
 from bilagbot.models import InvoiceData, ScanStatus
 from bilagbot.scanner import file_hash, scan_file
 
@@ -224,23 +224,27 @@ async def api_scan(file: UploadFile = File(...), conn: sqlite3.Connection = Depe
     result = classify(conn, invoice)
 
     # Lagre
-    scan_id = insert_scan(
-        conn,
-        file_path=str(dest.resolve()),
-        file_hash=fhash,
-        supplier_org_number=invoice.vendor_org_number,
-        supplier_name=result.supplier_name or invoice.vendor_name,
-        total_amount=invoice.total_amount,
-        vat_amount=invoice.vat_amount,
-        currency=invoice.currency,
-        invoice_date=invoice.invoice_date,
-        due_date=invoice.due_date,
-        invoice_number=invoice.invoice_number,
-        match_level=result.match_level.value,
-        account_code=result.account_code,
-        vat_code=result.vat_code,
-        raw_claude_json=raw_json,
-    )
+    try:
+        scan_id = insert_scan(
+            conn,
+            file_path=str(dest.resolve()),
+            file_hash=fhash,
+            supplier_org_number=invoice.vendor_org_number,
+            supplier_name=result.supplier_name or invoice.vendor_name,
+            total_amount=invoice.total_amount,
+            vat_amount=invoice.vat_amount,
+            currency=invoice.currency,
+            invoice_date=invoice.invoice_date,
+            due_date=invoice.due_date,
+            invoice_number=invoice.invoice_number,
+            match_level=result.match_level.value,
+            account_code=result.account_code,
+            vat_code=result.vat_code,
+            raw_claude_json=raw_json,
+        )
+    except DatabaseError as e:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(500, f"Databasefeil: {e}")
 
     row = get_scan(conn, scan_id)
     return {"duplicate": False, "scan": _row_to_dict(row)}
