@@ -7,29 +7,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from bilagbot.database import insert_scan
+from bilagbot.database import MIGRATIONS, SCHEMA, _run_migrations, insert_scan
 from bilagbot.exceptions import FikenError
 from bilagbot.web import app
-
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS known_suppliers (
-    org_number TEXT PRIMARY KEY, supplier_name TEXT NOT NULL,
-    account_code TEXT, account_name TEXT, vat_code TEXT,
-    auto_approve BOOLEAN DEFAULT FALSE, approval_count INTEGER DEFAULT 0,
-    last_seen_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS scan_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, file_path TEXT NOT NULL, file_hash TEXT NOT NULL,
-    supplier_org_number TEXT, supplier_name TEXT, total_amount REAL, vat_amount REAL,
-    currency TEXT DEFAULT 'NOK', invoice_date TEXT, due_date TEXT, invoice_number TEXT,
-    match_level TEXT NOT NULL, account_code TEXT, vat_code TEXT, status TEXT NOT NULL DEFAULT 'PENDING',
-    raw_claude_json TEXT, scanned_at TEXT NOT NULL, reviewed_at TEXT, posted_at TEXT,
-    fiken_purchase_id INTEGER, fiken_posted_at TEXT
-);
-CREATE TABLE IF NOT EXISTS fiken_accounts (
-    code TEXT PRIMARY KEY, name TEXT NOT NULL, last_synced_at TEXT NOT NULL
-);
-"""
 
 
 def _make_conn(db_path: Path) -> sqlite3.Connection:
@@ -37,6 +17,7 @@ def _make_conn(db_path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    _run_migrations(conn, MIGRATIONS)
     return conn
 
 
@@ -612,3 +593,18 @@ class TestScanAsync:
 
         assert res.status_code == 200
         assert mock_to_thread.called, "scan_file() delegeres ikke til asyncio.to_thread()"
+
+
+class TestMakeConn:
+    def test_make_conn_uses_production_schema(self):
+        """_make_conn() skal bruke SCHEMA fra database.py — ingen lokal kopi."""
+        from bilagbot.database import SCHEMA as PRODUCTION_SCHEMA
+        assert SCHEMA == PRODUCTION_SCHEMA
+
+    def test_make_conn_applies_migrations(self, tmp_path):
+        """_make_conn() skal initialisere alle migrasjonskolonner via MIGRATIONS."""
+        conn = _make_conn(tmp_path / "test.db")
+        cols = {row["name"] for row in conn.execute("PRAGMA table_info(scan_log)")}
+        assert "fiken_purchase_id" in cols
+        assert "fiken_posted_at" in cols
+        conn.close()
