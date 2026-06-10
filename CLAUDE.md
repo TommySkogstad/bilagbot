@@ -40,7 +40,7 @@ static/       — HTML/CSS frontend (brand guide-styling)
 
 ## API-endepunkter (web)
 
-Alle endepunkter unntatt `/api/health` krever autentisering (`require_auth`).
+Alle endepunkter unntatt `/api/health` bruker `require_auth` — autentisering aktiveres kun når `AUTH_USER` og `AUTH_PASS` er satt i miljøvariablene.
 
 | Metode | Endepunkt | Beskrivelse |
 |--------|-----------|-------------|
