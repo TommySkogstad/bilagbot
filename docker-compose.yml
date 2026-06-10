@@ -58,6 +58,15 @@ services:
     build: .
     restart: unless-stopped
     env_file: .env
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+      - /run:size=32m,mode=755
+      - /root:size=64m,mode=700
     environment:
       BILAGBOT_DATA_DIR: /data
     volumes:
