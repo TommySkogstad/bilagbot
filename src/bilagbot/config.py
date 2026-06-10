@@ -23,6 +23,9 @@ AUTO_APPROVE_THRESHOLD = int(os.getenv("AUTO_APPROVE_THRESHOLD", "3"))
 AUTH_USER = os.getenv("AUTH_USER", "")
 AUTH_PASS = os.getenv("AUTH_PASS", "")
 
+# Miljobryter: "prod" (default) krev auth ved oppstart; "dev"/"test" tillater aapen tilgang.
+BILAGBOT_ENV = os.getenv("BILAGBOT_ENV", "prod").lower()
+
 # Fiken API
 FIKEN_API_TOKEN = os.getenv("FIKEN_API_TOKEN", "")
 FIKEN_COMPANY_SLUG = os.getenv("FIKEN_COMPANY_SLUG", "")

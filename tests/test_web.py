@@ -416,9 +416,18 @@ class TestAuth:
         assert res.status_code == 200
 
     def test_auth_disabled_when_unset(self, client):
-        """Naar AUTH_USER/AUTH_PASS er tomme, skal endepunkter vaere aapne (dev-modus)."""
+        """Naar AUTH_USER/AUTH_PASS er tomme i dev/test-modus, skal endepunkter vaere aapne."""
         res = client.get("/api/scans")
         assert res.status_code == 200
+
+    def test_auth_required_in_prod(self, monkeypatch):
+        """I prod-modus (BILAGBOT_ENV=prod) skal oppstart feile naar auth ikke er konfigurert."""
+        monkeypatch.setattr("bilagbot.web.AUTH_USER", "")
+        monkeypatch.setattr("bilagbot.web.AUTH_PASS", "")
+        monkeypatch.setenv("BILAGBOT_ENV", "prod")
+        with pytest.raises(RuntimeError, match="AUTH_USER og AUTH_PASS"):
+            with TestClient(app):
+                pass
 
 
 class TestUploadSecurity:
