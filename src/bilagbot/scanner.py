@@ -72,7 +72,8 @@ def scan_file(path: Path, *, model: str | None = None) -> tuple[InvoiceData, str
     if mime not in SUPPORTED_TYPES:
         raise ScannerError(f"Filtypen {mime} stottes ikke. Stottede typer: PDF, JPEG, PNG, GIF, WebP")
 
-    prompt = f"Les filen {path.resolve()} og analyser den.\n\n{SCAN_PROMPT}"
+    safe_path_str = _sanitize_path_for_prompt(path)
+    prompt = f"Les filen {safe_path_str} og analyser den.\n\n{SCAN_PROMPT}"
 
     cmd = [
         "claude", "-p", prompt,
@@ -122,6 +123,11 @@ def scan_file(path: Path, *, model: str | None = None) -> tuple[InvoiceData, str
         raise ScannerError(f"Claude-respons matchet ikke InvoiceData-schema: {e}") from e
 
     return invoice, raw_json
+
+
+def _sanitize_path_for_prompt(path: Path) -> str:
+    """Fjerner kontrolltegn fra filstistrengen for å hindre prompt injection via filnavn."""
+    return "".join(c for c in str(path.resolve()) if ord(c) >= 32 and ord(c) != 127)
 
 
 def _extract_json(text: str) -> str:
