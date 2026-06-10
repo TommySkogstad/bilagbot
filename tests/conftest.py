@@ -1,7 +1,11 @@
 """Pytest fixtures for BilagBot."""
 
 import json
+import os
 from pathlib import Path
+
+# Sett test-modus slik at startup-valideringen i web.py ikke krev auth-konfig
+os.environ.setdefault("BILAGBOT_ENV", "test")
 
 import pytest
 

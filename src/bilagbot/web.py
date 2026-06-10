@@ -2,11 +2,13 @@
 
 import asyncio
 import logging
+import os
 import re
 import secrets
 import sqlite3
 import unicodedata
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
@@ -42,7 +44,25 @@ from bilagbot.scanner import file_hash, scan_file
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="BilagBot", version="0.2.0")
+
+def _validate_startup_config() -> None:
+    env = os.getenv("BILAGBOT_ENV", "prod").lower()
+    if env not in ("dev", "test") and not _auth_enabled():
+        raise RuntimeError(
+            "AUTH_USER og AUTH_PASS må settes i .env. "
+            "Sett BILAGBOT_ENV=dev for lokal utvikling."
+        )
+    if not _auth_enabled():
+        logger.warning("⚠️  Auth er deaktivert — kun for dev/test")
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    _validate_startup_config()
+    yield
+
+
+app = FastAPI(title="BilagBot", version="0.2.0", lifespan=_lifespan)
 
 _security = HTTPBasic(auto_error=False)
 
