@@ -1,11 +1,10 @@
 """Tester for scanner (med mocket Claude CLI)."""
 
 import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-from pathlib import Path
 
 from bilagbot.exceptions import ScannerError
 from bilagbot.models import InvoiceData
