@@ -1,13 +1,51 @@
 """Tester for scanner (med mocket Claude CLI)."""
 
 import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from bilagbot.exceptions import ScannerError
 from bilagbot.models import InvoiceData
-from bilagbot.scanner import detect_mime_type, file_hash, scan_file
+from bilagbot.scanner import _sanitize_path_for_prompt, detect_mime_type, file_hash, scan_file
+
+
+class TestSanitizePathForPrompt:
+    def test_newlines_fjernes_fra_filsti(self):
+        """Newlines i filstistrengen som brukes i prompten skal fjernes."""
+        mock_path = MagicMock(spec=Path)
+        mock_resolved = MagicMock()
+        mock_resolved.__str__ = MagicMock(return_value="/tmp/faktura\nevil_payload.pdf")
+        mock_path.resolve.return_value = mock_resolved
+
+        result = _sanitize_path_for_prompt(mock_path)
+
+        assert "\n" not in result
+        assert "faktura" in result
+
+    def test_kontrolltegn_fjernes(self):
+        """CR, NULL og andre kontrolltegn fjernes fra filstistrengen."""
+        mock_path = MagicMock(spec=Path)
+        mock_resolved = MagicMock()
+        mock_resolved.__str__ = MagicMock(return_value="/tmp/faktura\r\x00evil.pdf")
+        mock_path.resolve.return_value = mock_resolved
+
+        result = _sanitize_path_for_prompt(mock_path)
+
+        assert "\r" not in result
+        assert "\x00" not in result
+        assert "faktura" in result
+
+    def test_normal_filsti_upavirket(self, tmp_path):
+        """Normal filsti uten kontrolltegn skal beholdes uendret."""
+        f = tmp_path / "faktura.pdf"
+        f.write_bytes(b"dummy")
+
+        result = _sanitize_path_for_prompt(f)
+
+        assert "faktura.pdf" in result
+        assert "\n" not in result
 
 
 class TestFileHash:
