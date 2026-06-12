@@ -1,4 +1,6 @@
-FROM python:3.12-slim
+# Pinn base-image til multi-arch manifest-digest for reproduserbare bygg.
+# Oppdater bevisst: docker buildx imagetools inspect python:3.12-slim --format '{{.Manifest.Digest}}'
+FROM python:3.12-slim@sha256:a39549e211a16149edf74e5fdc9ef03a6767e46cd987c5048b6659b6c9904c94
 
 # System dependencies
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
@@ -6,8 +8,8 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     npm \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Claude CLI
-RUN npm install -g @anthropic-ai/claude-code
+# Install Claude CLI — pinnet eksakt versjon mot supply-chain-risiko ved auto-rebuild.
+RUN npm install -g @anthropic-ai/claude-code@2.1.175
 
 WORKDIR /app
 
